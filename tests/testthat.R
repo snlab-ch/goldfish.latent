@@ -8,5 +8,6 @@
 
 library(testthat)
 library(goldfish.latent)
+library(goldfish)
 
 test_check("goldfish.latent")
