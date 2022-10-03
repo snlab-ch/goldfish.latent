@@ -51,18 +51,19 @@
 #' to show the progress of the preprocessing of the events sequence.
 #'
 #' @return a list with the following components.
-#'   \item[dataStan]{a list with the information necessary to run a HMC using
+#' \describe{
+#'   \item{dataStan}{a list with the information necessary to run a HMC using
 #'   Stan.}
-#'   \item[sendersIx]{a data frame with the label of the sender from the
+#'   \item{sendersIx}{a data frame with the label of the sender from the
 #'   nodes data frame, and the index assign to the random coefficient.}
-#'   \item[namesEffects]{a character vector with terms in the random and fixed
+#'   \item{namesEffects}{a character vector with terms in the random and fixed
 #'   effects formulas and their final name.}
-#'   \item[effectDescription]{an array with detailed and comprehensible
+#'   \item{effectDescription}{an array with detailed and comprehensible
 #'   information of the terms used in the random and fixed effects formulas.}
-#'
+#' }
 #' @export
 #' @importFrom stats terms setNames as.formula model.matrix reformulate
-#' @importFrom goldfish checkModelPar
+#' @importFrom goldfish GatherPreprocessing
 #'
 #' @examples
 #' \donttest{
@@ -91,15 +92,6 @@ CreateData <- function(
   model <- match.arg(model)
   subModel <- match.arg(subModel)
 
-  goldfish:::checkModelPar(
-    model = model, subModel = subModel,
-    modelList = c("DyNAM", "REM"),
-    subModelList = list(
-      DyNAM = c("choice", "rate", "choice_coordination"),
-      REM = "choice"
-    )
-  )
-
   stopifnot(
     is.null(progress) || inherits(progress, "logical"),
     is.null(preprocessArgs) ||
@@ -123,9 +115,9 @@ CreateData <- function(
 
   # formula treatment
   reTerms <- lapply(randomEffects, terms)
-  feTerms <- stats::terms(fixedEffects)
+  feTerms <- terms(fixedEffects)
   cstrTerms <- if (!is.null(supportConstraint))
-    stats::terms(supportConstraint) else NULL
+    terms(supportConstraint) else NULL
 
   if (length(attr(cstrTerms, "term.labels")) > 1)
     stop(dQuote("supportConstraint"), " argument only works for one effect.")
@@ -153,7 +145,7 @@ CreateData <- function(
   termsDyNAM <- c(xDyNAM, attr(feTerms, "term.labels"),
                   attr(cstrTerms, "term.labels")) |> unique()
 
-  formulaDyNAM <- stats::reformulate(
+  formulaDyNAM <- reformulate(
     termsDyNAM,
     response = as.character(fixedEffects[[2]])
   )
@@ -171,23 +163,24 @@ CreateData <- function(
   #   effectDescription, sep = "_", joiner = "_"
   # )
     # process data
-  dataProcessed <- goldfish::GatherPreprocessing(
+  dataProcessed <- GatherPreprocessing(
     formula = formulaDyNAM,
     model = if (model == "DyNAM" && subModel == "choice") "DyNAMRE" else model,
     subModel = subModel,
     preprocessArgs = preprocessArgs,
-    progress = progress
+    progress = progress,
+    envir = envir
   )
 
   nEvents <- length(dataProcessed$sender)
 
-  namesEffects <- stats::setNames(
+  namesEffects <- setNames(
     gsub("\\$", "Of", dataProcessed$namesEffects),
     termsDyNAM
   )
 
   expandedDF <- cbind(
-    stats::setNames(
+    setNames(
       as.data.frame(dataProcessed$stat_all_events),
       namesEffects
     ),
@@ -237,16 +230,17 @@ CreateData <- function(
     c(namesEffects[match(attr(feTerms, "term.labels"), termsDyNAM)]) |>
     paste(collapse = " + ")
 
-  Xmat <- stats::model.matrix(
-    stats::as.formula(paste("~ ", formulaDyNAMRE, " + 0")),
+  Xmat <- model.matrix(
+    as.formula(paste("~ ", formulaDyNAMRE, " + 0")),
     data = expandedDF
   )
 
-  return(list(
+  return(structure(list(
     dataStan = list(
       T = nEvents,
       N = nTotal,
       P = ncol(Xmat),
+      Q = length(randomEffects),
       A = nrow(sendersIx),
       start = idxEvents[1, ],
       end = idxEvents[2, ],
@@ -258,7 +252,110 @@ CreateData <- function(
     sendersIx = sendersIx,
     namesEffects = namesEffects,
     effectDescription = effectDescription
+  ),
+  class = "goldfish.latent.data",
+  model = "DyNAM",
+  subModel = "choice"
   ))
 }
 
 
+ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
+  stopifnot(inherits(reFormula, "formula"))
+
+  reForTerms <- terms(reFormula)
+  effectsFormula <- attr(reForTerms, "term.labels")
+  if (length(effectsFormula) == 0) {
+    return(reFormula)
+  }
+
+  depName <- goldfish:::getDependentName(fixedEffects)
+  defaultNetworkName <- attr(get(depName, envir = envir), "defaultNetwork")
+
+  # modify calls
+  effectForMod <- vapply(
+    effectsFormula,
+    \(x) {
+      effectLang <- str2lang(x)
+      if (length(effectLang) == 1) {
+        return(deparse(as.call(
+          list(effectLang, as.symbol(defaultNetworkName), type = "ego")
+        )))
+      } else if (deparse(effectLang[[1]]) != "ego") {
+        return(deparse(as.call(
+          c(list(effectLang[[1]]), as.list(effectLang[-1]), list(type = "ego"))
+        )))
+      } else return(x)
+    },
+    character(1)
+  )
+
+  # formula after modifications
+  return(reformulate(effectForMod, response = reFormula[[2]]))
+}
+
+
+#' Create a Stan code file
+#'
+#' `goldfish.latent` offers working version of the models to work with Stan.
+#' Users should have installed `cmdstanr` package and `CmdStan` before.
+#' Follow the instructions instructions from `cmdstanr` documentation.
+#'
+#' `cmdstanr` functionalities makes possible for users to write a local copy
+#' of the Stan code and modify it for other purposes.
+#' The default in [cmdstanr::write_stan_file()] is to write the model in a
+#' temporal folder. Using the `dir` argument is possible to write the model
+#' in a folder specifies by the user.
+#'
+#' @param data2stan a `list` output of a [CreateData()] call.
+#' @param ... additional arguments to be passed to
+#'   [cmdstanr::write_stan_file()]
+#'
+#' @return The path to a file with `stan` extension.
+#' It contains the code with the specification of data structure, priors,
+#' and log-likelihood of the given model.
+#'
+#' @export
+#'
+#' @examples
+#' #' \donttest{
+#' library(goldfish)
+#' library(cmdstanr)
+#' data("Social_Evolution")
+#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
+#'   linkEvents(changeEvent = calls, nodes = actors)
+#' callsDependent <- defineDependentEvents(
+#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' )
+#' data2stan <- CreateDataModel(
+#'   randomEffects = list(inertia ~ 1),
+#'   fixedEffects = callsDependent ~ recip + trans
+#' )
+#'
+#' stanCode <- CreateModelCode(data2stan)
+#' }
+CreateModelCode <- function(data2stan, ...) {
+  stopifnot(inherits(data2stan, "goldfish.latent.data"))
+
+  model <- attr(data2stan, "model")
+  subModel <- attr(data2stan, "subModel")
+
+  if (model == "DyNAM" && subModel == "choice") {
+    if (data2stan[["dataStan"]][["Q"]] == 1) {
+      stanCode <- readLines(
+        system.file("stan", "MCM_RE1.stan", package = "goldfish.latent")
+      )
+    }
+  } else stop("Not yet implemented for more than one random effect")
+
+  if (requireNamespace("cmdstanr", quietly = TRUE) &&
+      cmdstanr::cmdstan_version() >= "2.29.2") {
+    model <- cmdstanr::write_stan_file(code = stanCode)
+  } else
+    stop(
+      dQuote("cmdstanr"), " package and a working version of",
+      dQuote("CmdStan"), "are required.",
+      " Please follow Stan documentation for instructions on how to install.")
+
+  return(model)
+}

@@ -18,13 +18,13 @@ knitr::opts_chunk$set(
 <!-- badges: start -->
 <!-- badges: end -->
 
-`goldfish.latent` extends the `goldfish` package with models that include latent
-variables.
+`goldfish.latent` extends the `goldfish` package with models that include
+latent variables.
 Therefore, how to define the event sequence data objects for modeling and
-the effects available for modeling uses `goldfish` data objects definitions and
-statistics effects.
-Inferences of the proposed models are done using Hamiltonian Chain Monte Carlo as
-implemented in [Stan](https://mc-stan.org/). 
+the effects available for modeling uses `goldfish`'s data objects definitions
+and statistics effects.
+Inferences of the proposed models are made using Hamiltonian Chain Monte Carlo
+as implemented in [Stan](https://mc-stan.org/).
 
 ## Installation
 
@@ -37,11 +37,14 @@ remotes::install_github("snlab-ch/goldfish.latent", build_vignettes = TRUE)
 ## Example
 
 The first model introduced in `goldfish.latent` is the DyNAM with random effects.
-Model formulation allows to include monadic statistic or actors' covariates to explain
-the variability of the random effects.
+Model formulation allows to include monadic statistic or actors' covariates
+to explain the variability of the random effects.
 
-```{r example}
+```{r example, message=FALSE, results='hide'}
 library(goldfish.latent)
+
+# using cmdstanr for getting posterior samples and 
+library(cmdstanr)
 
 # using goldfish social evolution data set
 library(goldfish)
@@ -55,7 +58,34 @@ data2stan <- CreateData(
  randomEffects = list(inertia ~ 1),
  fixedEffects = callsDependent ~ recip + trans
 )
+
+stanCode <- CreateModelCode(data2stan)
+
+mod01 <- cmdstan_model(stanCode)
+mod01Samples <- mod01$sample(
+  data = data2stan[["dataStan"]],
+  parallel_chains = 4, chains = 4,  iter_warmup = 500, iter_sampling = 500,
+  show_messages = FALSE
+)
+
 ```
+
+Using `cmdstanr` functionalities makes easier fit to use summary and plotting
+function from packages that works with MCMC posterior samples.
+For the summary of the posterior samples `cmdstanr` uses the 
+[`posterior`](https://mc-stan.org/posterior/) package.
+Plots from the posterior samples can be done using, for example,
+[`bayesplot`](https://mc-stan.org/bayesplot/) package. 
+
+```{r}
+mod01Samples$summary("beta")
+
+# names fixed effects coincides with colnames(data2stan$dataStan$X)
+
+# Plots from the posterior distribution can be generated using `bayesplot`
+# or any other package that handle MCMC posteriors
+```
+
 
 ## Code of Conduct
 

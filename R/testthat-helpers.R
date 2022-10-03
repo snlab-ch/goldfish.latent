@@ -58,3 +58,23 @@ networkExog <- matrix(
   dimnames = list(sprintf("Actor %d", 1:5),
                   sprintf("Actor %d", 1:5))
 )
+
+# defining objects
+actorsEx <- goldfish::defineNodes(actorsEx) |>
+  goldfish::linkEvents(changeEvent = compChange, attribute = "present")
+
+networkState <- goldfish::defineNetwork(
+  matrix = networkState, nodes = actorsEx,
+  directed = TRUE) |>
+  goldfish::linkEvents(changeEvent = eventsIncrement, nodes = actorsEx)
+depNetwork <- goldfish::defineDependentEvents(
+  events = eventsIncrement,
+  nodes = actorsEx,
+  defaultNetwork = networkState)
+
+# define goldfish objects
+networkExog <- goldfish::defineNetwork(
+  matrix = networkExog,
+  nodes = actorsEx, directed = TRUE) |>
+  goldfish::linkEvents(changeEvent = eventsExogenous, nodes = actorsEx)
+
