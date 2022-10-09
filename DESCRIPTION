@@ -1,6 +1,6 @@
 Package: goldfish.latent
 Title: Relational Event Model with Latent Variables
-Version: 0.0.0.9000
+Version: 0.0.1
 Authors@R: 
     person(
       given = "Alvaro",
