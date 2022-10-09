@@ -307,7 +307,7 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
 #' temporal folder. Using the `dir` argument is possible to write the model
 #' in a folder specifies by the user.
 #'
-#' @param data2stan a `list` output of a [CreateData()] call.
+#' @param dataStan a `list` output of a [CreateData()] call.
 #' @param ... additional arguments to be passed to
 #'   [cmdstanr::write_stan_file()]
 #'
@@ -318,7 +318,7 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
 #' @export
 #'
 #' @examples
-#' #' \donttest{
+#' \donttest{
 #' library(goldfish)
 #' library(cmdstanr)
 #' data("Social_Evolution")
@@ -334,14 +334,14 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
 #'
 #' stanCode <- CreateModelCode(data2stan)
 #' }
-CreateModelCode <- function(data2stan, ...) {
-  stopifnot(inherits(data2stan, "goldfish.latent.data"))
+CreateModelCode <- function(dataStan, ...) {
+  stopifnot(inherits(dataStan, "goldfish.latent.data"))
 
-  model <- attr(data2stan, "model")
-  subModel <- attr(data2stan, "subModel")
+  model <- attr(dataStan, "model")
+  subModel <- attr(dataStan, "subModel")
 
   if (model == "DyNAM" && subModel == "choice") {
-    if (data2stan[["dataStan"]][["Q"]] == 1) {
+    if (dataStan[["dataStan"]][["Q"]] == 1) {
       stanCode <- readLines(
         system.file("stan", "MCM_RE1.stan", package = "goldfish.latent")
       )
@@ -359,3 +359,380 @@ CreateModelCode <- function(data2stan, ...) {
 
   return(model)
 }
+
+
+#' Compute log-likelihood using MCMC samples
+#'
+#' The function computes the log-likelihood for each MCMC sample from the
+#' posterior distribution.
+#'
+#' Argument `type` allows to compute the conditional or marginal version of the
+#' log-likelihood. The marginal version uses a Gauss-Hermite quadrature
+#' approximation to integrate out the random effects
+#' \insertCite{Merkle2019}{Rdpack}. The code is an adaptation from
+#' the supplementary material of \insertCite{Merkle2019;textual}{Rdpack}.
+#'
+#' @param cmdstanrSamples a `draws_array` or a `CmdStanFit` object with MCMC
+#'   samples from the posterior distribution. In the case of a `draws_array`
+#'   object is expected to have three dimensions corresponding to iterations,
+#'   chain and variables.
+#' @param dataStan a `list` output of a [CreateData()] call.
+#' @param type a `character` value. It indicates whether the log-likelihood
+#'   computation should return the `"conditional"` or the `"marginal"` version.
+#' @param nNodes an `integer`. The number of quadrature point to use in the
+#'   Gauss-Hermite quadrature approximation use to integrate out the
+#'   random-effects.
+#' @param splitSize an `integer` or `NULL`. It is use when the `type` is
+#'   `"conditional"`. When it is `NULL`, the `splitSize` is set to have
+#'   roughly `4e4` rows sent to a processor when
+#'   the matrix `X`, containing the change statistics, has more
+#'   than `1e6`rows. If `X` has less than `1e6` rows, the `splitSize` is set
+#'   in such way that every processor would have the same amount of rows to
+#'   process.
+#'   The default value is `NULL`.
+#' @param spec A specification appropriate to the type of cluster, see
+#'   [parallel::makeCluster()] for a detail description. In the simplest case,
+#'   an integer defining the number of processors to use during the parallel
+#'   computation.
+#' @param ... Additional arguments and options to be passed to the
+#'   [parallel::makeCluster()] call.
+#'
+#' @return An array with the log-likelihood for each event when
+#'   `type = "conditional"` or the log-likelihood for each sender actor after
+#'   the random effects are integrated out when `type = "marginal"`.
+#'
+#' @references
+#' \insertRef{Merkle2019}{goldfish.latent}
+#'
+#' @export
+#'
+#' @importFrom Rdpack reprompt
+#'
+#' @examples
+#' \donttest{
+#' library(goldfish)
+#' library(cmdstanr)
+#' data("Social_Evolution")
+#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
+#'   linkEvents(changeEvent = calls, nodes = actors)
+#' callsDependent <- defineDependentEvents(
+#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' )
+#' data2stan <- CreateDataModel(
+#'   randomEffects = list(inertia ~ 1),
+#'   fixedEffects = callsDependent ~ recip + trans
+#' )
+#'
+#' stanCode <- CreateModelCode(data2stan)
+#'
+#' mod01 <- cmdstan_model(stanCode)
+#' mod01Samples <- mod01$sample(
+#'   data = data2stan[["dataStan"]],
+#'   parallel_chains = 4, chains = 4,  iter_warmup = 500, iter_sampling = 500,
+#'   show_messages = FALSE
+#' )
+#'
+#' margLogLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
+#' condLogLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan,
+#'                                         type = "conditional", spec = 4)
+#' }
+ComputeLogLikelihood <- function(
+  cmdstanrSamples,
+  dataStan,
+  type = c("marginal", "conditional"),
+  nNodes = ifelse(type == "marginal", 11L, NULL),
+  splitSize = NULL,
+  spec = parallel::detectCores() - 1,
+  ...
+) {
+  stopifnot(
+    inherits(cmdstanrSamples, c("CmdStanFit", "draws")),
+    inherits(dataStan, "goldfish.latent.data"),
+    is.null(splitSize) || inherits(splitSize, "numeric") &&
+      length(splitSize) == 1
+  )
+
+  type <- match.arg(type)
+
+
+  if (dataStan[["dataStan"]][["Q"]] > 1)
+    stop("Likelihood computation for a model with more than one random-effect",
+         " is not yet available.")
+
+  if (inherits(cmdstanrSamples, "CmdStanFit")) {
+    draws <- cmdstanrSamples$draws("gamma_raw")
+    drawsDimnames <- dimnames(draws)
+    draws <- list(
+      beta = cmdstanrSamples$draws("beta"),
+      sigma = cmdstanrSamples$draws("sigma"),
+      gamma_raw = draws
+    ) |>
+      lapply(\(x) apply(x, 3, rbind))
+  } else if (length(dim(cmdstanrSamples)) == 3) {
+    drawsDimnames <- dimnames(cmdstanrSamples)
+
+    variableNames <- dimnames(cmdstanrSamples)[[3]]
+
+    draws <- list(
+      beta = cmdstanrSamples[, , grepl("^beta", variableNames)],
+      sigma = cmdstanrSamples[, , grepl("^sigma$", variableNames)],
+      gamma_raw = cmdstanrSamples[, , grepl("^gamma_raw", variableNames)]
+    ) |>
+      lapply(\(x) apply(x, 3, rbind))
+  } else
+    stop(
+      dQuote("cmdstanrSamples"),
+      " argument expects a three dimensional ", dQuote("draws"), " object."
+    )
+
+  if (is.null(splitSize) & type == "conditional") {
+    if (!is.numeric(spec) || length(spec) != 1)
+      stop(
+        "Please provide an integer number for", dQuote("splitSize"),
+        " parameter. It's not possible to assign a value with current value of",
+        dQuote("spec")
+      )
+
+    splitSize <- if (spec == 1) NULL else
+      ifelse(
+        dataStan[["dataStan"]][["N"]] > 1e6,
+        4e4 / dataStan[["dataStan"]][["A"]],
+        dataStan[["dataStan"]][["T"]] / spec
+      ) |> floor()
+
+    eventsPerCore <- if (!is.null(splitSize)) {
+      parallel::splitIndices(
+        dataStan[["dataStan"]][["T"]],
+        floor(dataStan[["dataStan"]][["T"]] / splitSize)
+      )  |>
+        lapply(range)
+    } else NULL
+  }
+
+  # create cluster and initialize workers
+  if (length(spec) == 1 & spec == 1) {
+    cl <- NULL
+  } else {
+    cl <- parallel::makeCluster(spec = spec, ...)
+    ignore <- parallel::clusterEvalQ(cl, {library(matrixStats);NULL})
+    on.exit(parallel::stopCluster(cl))
+  }
+  #
+  if (type == "conditional") {
+    logLik <- if (!is.null(eventsPerCore)) {
+      parallel::clusterApplyLB(
+        cl = cl,
+        seq.int(length(eventsPerCore)),
+        fun = LogLikCondRE,
+        draws = draws,
+        dataList = dataStan[["dataStan"]],
+        eventsPerCore = eventsPerCore
+      ) |>
+        Reduce(f = cbind, x = _)
+    } else
+      LogLikCondRE(
+        eventsIter = NULL,
+        draws = draws,
+        dataList = dataStan[["dataStan"]],
+        eventsPerCore = NULL
+      )
+
+    drawsDimnames$variable <- sprintf("event[%d]", seq.int(ncol(logLik)))
+
+  } else if (type == "marginal") {
+    logLik <- mllDyNAMChoice(
+      draws = draws,
+      dataList = dataStan[["dataStan"]],
+      nNodes = nNodes,
+      cl = cl
+    )
+
+    drawsDimnames$variable <- sprintf("actor[%d]", seq.int(ncol(logLik)))
+  }
+
+  return(structure(
+    logLik, class = c("draws_array", "draws", "array"),
+    dim = sapply(drawsDimnames, length), dimnames = drawsDimnames
+  ))
+}
+
+#' marginal likelihoods for the DyNAM choice
+#'
+#' Function to obtain marginal likelihoods with parallel processing.
+#'
+#' @param draws Data list. Draws from a Fitted Stan model converted to a list
+#'   with three components: beta, gamma_raw and sigma in the case of a single
+#'   random effect.
+#' @param dataList Data list used in fitting the model
+#' @param nNodes Number of adaptive quadrature nodes to use
+#' @param cl  cluster defined for parallel computing
+#'
+#' @return A two dimensional array. Every row corresponds to posterior sample
+#' iterations.Every column corresponds to a sending actor. Values are the
+#' marginal log-likelihood after integrating out random effects.
+#' @noRd
+#' @importFrom matrixStats colLogSumExps rowLogSumExps
+#'
+#' @examples mllDyNAMChoice(draws, data2stan, 11)
+mllDyNAMChoice <- function(draws, dataList, nNodes, cl = NULL) {
+
+  # Get standard quadrature points
+  quad <- statmod::gauss.quad.prob(nNodes, "normal", mu = 0, sigma = 1)
+  # logarithm of adapted weights
+  quad$logWA <- log(quad$weights) + log(2 * pi) / 2 + quad$nodes^2 / 2
+
+  # draws <- extract(stan_fit, stan_fit@model_pars)
+  # post_means <- better_posterior_means(draws)
+
+  # Separate out draws for means and SD from MCMC samples
+  gamma <- sweep(draws$gamma_raw, 1, draws$sigma, FUN = "*")
+  mcmcStat <- list(
+    means = matrixStats::colMeans2(gamma),
+    sd = matrixStats::colSds(gamma)
+  )
+
+  nDraws <- nrow(gamma)
+
+  # add helper data
+  dataList$senderEvent <- dataList$sender[dataList$start]
+  # Function to compute the approximate marginal log-lik for sender
+  fMarginal <- function(sender, draws, mcmcStat, dataList, quad, nNodes) {
+    events <- which(dataList$senderEvent == sender)
+
+    #
+    mcmcSd <- mcmcStat$sd[sender]
+    adaptNodes <- mcmcStat$means[sender] + mcmcSd * quad$nodes
+    #
+    nEvents <- length(events)
+
+    mll <- array(0, dim = c(nDraws, nNodes))
+    # mll <- list()
+    # contador <- 1
+    for (event in events) {
+      keep <- seq.int(dataList$start[event], dataList$end[event])
+      xb <- tcrossprod(dataList$X[keep, ], draws$beta)
+      choice <- which(dataList$chose[event] == keep)
+
+      Z <- dataList$Z[keep]
+
+      mll <- mll +
+        sapply(
+          seq.int(nNodes),
+          function(i) {
+            utility <- sweep(xb, 1, Z * adaptNodes[i], FUN = "+")
+            # # the log of the prob is utility - logSumExp of the utility choice set
+            utility[choice, ] - colLogSumExps(utility)
+
+          }
+        )
+    }
+    # # l_c + log(prob prior)
+    mll <- mll + outer(draws$sigma[, 1], adaptNodes, function(x, y) dnorm(y, sd = x, log = TRUE))
+    # dnorm(adaptNodes[i], sd = draws$sigma, log = TRUE)
+
+    # log(\prod \sum_{qdr points} lik (qdr point)) = \sum logSumExp( log(log_lik (qdr point)))
+    # l_c + log(prob prior) + log(adapted weight)
+    rowLogSumExps(sweep(mll, 2, quad$logWA + log(mcmcSd), FUN = "+"))
+  }
+
+  # Parallel by sender
+  if (!is.null(cl)) {
+  parallel::parSapplyLB(
+    cl,
+    seq.int(dataList$A),
+    fMarginal,
+    draws = draws,
+    mcmcStat = mcmcStat,
+    dataList = dataList,
+    quad = quad,
+    nNodes = nNodes
+  )
+  } else
+    sapply(
+      seq.int(dataList$A),
+      fMarginal,
+      draws = draws,
+      mcmcStat = mcmcStat,
+      dataList = dataList,
+      quad = quad,
+      nNodes = nNodes
+    )
+}
+
+# # function to compute the likelihood for mean draw for model w.o RE
+LogLikCondWORE <- function(eventsIter, draws, dataList, eventsPerCore = NULL) {
+  if (!is.null(eventsIter)) {
+    events <- eventsPerCore[[eventsIter]]
+    startI <- dataList$start[head(events, 1)]
+    endI <- dataList$end[tail(events, 1)]
+    X <- dataList$X[seq.int(startI, endI), ]
+
+    seqEventsKeep <- seq.int(head(events, 1), tail(events, 1))
+    start <- dataList$start[seqEventsKeep] - (startI - 1)
+    end <- dataList$end[seqEventsKeep] - (startI - 1)
+    chose <- dataList$chose[seqEventsKeep] - (startI - 1)
+
+    nE <- length(seqEventsKeep)
+  } else {
+    X <- dataList$X
+    start <- dataList$start
+    end <- dataList$end
+    chose <- dataList$chose
+    nE <- dataList$T
+  }
+
+  xb <- tcrossprod(X, draws)
+
+  ll <- array(0, dim = c(nrow(draws), nE))
+  # ,
+  #             dimnames = list(iteration = seq.int(nrow(draws)),
+  #                             variable = sprintf('', seq())))
+
+  for (event in seq.int(nE)) {
+    ll[, event] <- xb[chose[event], ] -
+      colLogSumExps(xb, rows = seq(start[event], end[event]))
+  }
+
+  return(ll)
+}
+
+LogLikCondRE <- function(eventsIter, draws, dataList, eventsPerCore = NULL) {
+  if (!is.null(eventsIter)) {
+    events <- eventsPerCore[[eventsIter]]
+    startI <- dataList$start[head(events, 1)]
+    endI <- dataList$end[tail(events, 1)]
+    seqDataKeep <- seq.int(startI, endI)
+    X <- dataList$X[seqDataKeep, ]
+    Z <- dataList$Z[seqDataKeep]
+    sender <- dataList$sender[seqDataKeep]
+
+    seqEventsKeep <- seq.int(head(events, 1), tail(events, 1))
+    start <- dataList$start[seqEventsKeep] - (startI - 1)
+    end <- dataList$end[seqEventsKeep] - (startI - 1)
+    chose <- dataList$chose[seqEventsKeep] - (startI - 1)
+
+    nE <- length(seqEventsKeep)
+  } else {
+    X <- dataList$X
+    Z <- dataList$Z
+    sender <- dataList$sender
+    start <- dataList$start
+    end <- dataList$end
+    chose <- dataList$chose
+    nE <- dataList$T
+  }
+
+  gamma <- sweep(draws$gamma_raw, 1, draws$sigma, FUN = "*")
+
+  xb <- tcrossprod(X, draws$beta) +  t(sweep(gamma[, sender], 2, Z, FUN = "*"))
+
+  ll <- array(0, dim = c(nrow(gamma), nE))
+
+  for (event in seq(nE)) {
+    ll[, event] <- xb[chose[event], ] -
+      colLogSumExps(xb, rows = seq(start[event], end[event]))
+  }
+
+  return(ll)
+}
+

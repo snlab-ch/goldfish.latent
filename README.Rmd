@@ -80,12 +80,29 @@ Plots from the posterior samples can be done using, for example,
 ```{r}
 mod01Samples$summary("beta")
 
-# names fixed effects coincides with colnames(data2stan$dataStan$X)
-
-# Plots from the posterior distribution can be generated using `bayesplot`
-# or any other package that handle MCMC posteriors
+  # names fixed effects coincides with colnames(data2stan$dataStan$X)
 ```
 
+
+The `ComputeLogLikelihood()` function allows computing the marginal or
+conditional log-likelihood for the model using MCMC samples from the posterior
+distribution. 
+Parallel computation using `parallel` package is possible.
+Using the [`loo`](https://mc-stan.org/loo/) functionalities is
+possible to compute the Watanabe Information Criterion `waic()` and the
+Leave-One-Out approximation using Pareto smoothed importance sampling `loo()`.
+Those information criteria can be used to compare models using `loo_compare()`.
+
+```{r}
+logLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
+
+# loo and waic computation using the margina
+library(loo)
+
+relEff <- relative_eff(exp(logLikMod01))
+looM01 <- loo(logLikMod01, r_eff = relEff)
+looM01
+```
 
 ## Code of Conduct
 

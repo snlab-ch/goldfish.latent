@@ -26,12 +26,14 @@ Imports:
     loo,
     matrixStats,
     posterior (>= 1.2.2),
+    Rdpack (>= 0.7),
     statmod
 Remotes: 
     github::snlab-ch/goldfish@feature_simulation,
     stan-dev/cmdstanr,
     stan-dev/posterior
 SystemRequirements: CmdStan >= 2.29.2
+RdMacros: Rdpack
 Suggests: 
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

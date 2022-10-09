@@ -4,10 +4,10 @@
 \alias{CreateModelCode}
 \title{Create a Stan code file}
 \usage{
-CreateModelCode(data2stan, ...)
+CreateModelCode(dataStan, ...)
 }
 \arguments{
-\item{data2stan}{a \code{list} output of a \code{\link[=CreateData]{CreateData()}} call.}
+\item{dataStan}{a \code{list} output of a \code{\link[=CreateData]{CreateData()}} call.}
 
 \item{...}{additional arguments to be passed to
 \code{\link[cmdstanr:write_stan_file]{cmdstanr::write_stan_file()}}}
@@ -30,7 +30,7 @@ temporal folder. Using the \code{dir} argument is possible to write the model
 in a folder specifies by the user.
 }
 \examples{
-#' \donttest{
+\donttest{
 library(goldfish)
 library(cmdstanr)
 data("Social_Evolution")

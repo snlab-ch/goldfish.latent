@@ -68,14 +68,49 @@ mod01Samples$summary("beta")
 #> # A tibble: 3 × 10
 #>   variable   mean median    sd   mad     q5   q95  rhat ess_bulk ess_tail
 #>   <chr>     <dbl>  <dbl> <dbl> <dbl>  <dbl> <dbl> <dbl>    <dbl>    <dbl>
-#> 1 beta[1]   4.92   4.90  0.420 0.409  4.24  5.61   1.00     935.    1001.
-#> 2 beta[2]   1.64   1.64  0.199 0.197  1.31  1.97   1.00    3588.    1525.
-#> 3 beta[3]  -0.275 -0.272 0.232 0.230 -0.667 0.103  1.00    3634.    1726.
+#> 1 beta[1]   4.94   4.93  0.400 0.377  4.29  5.61   1.00    1107.    1433.
+#> 2 beta[2]   1.64   1.63  0.206 0.210  1.31  1.97   1.00    2962.    1577.
+#> 3 beta[3]  -0.275 -0.277 0.231 0.237 -0.656 0.101  1.00    3231.    1561.
 
-# names fixed effects coincides with colnames(data2stan$dataStan$X)
+  # names fixed effects coincides with colnames(data2stan$dataStan$X)
+```
 
-# Plots from the posterior distribution can be generated using `bayesplot`
-# or any other package that handle MCMC posteriors
+The `ComputeLogLikelihood()` function allows computing the marginal or
+conditional log-likelihood for the model using MCMC samples from the
+posterior distribution. Parallel computation using `parallel` package is
+possible. Using the [`loo`](https://mc-stan.org/loo/) functionalities is
+possible to compute the Watanabe Information Criterion `waic()` and the
+Leave-One-Out approximation using Pareto smoothed importance sampling
+`loo()`. Those information criteria can be used to compare models using
+`loo_compare()`.
+
+``` r
+logLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
+
+# loo and waic computation using the margina
+library(loo)
+
+relEff <- relative_eff(exp(logLikMod01))
+looM01 <- loo(logLikMod01, r_eff = relEff)
+#> Warning: Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details.
+looM01
+#> 
+#> Computed from 2000 by 34 log-likelihood matrix
+#> 
+#>          Estimate    SE
+#> elpd_loo   -679.9 112.1
+#> p_loo        17.7   8.0
+#> looic      1359.8 224.1
+#> ------
+#> Monte Carlo SE of elpd_loo is NA.
+#> 
+#> Pareto k diagnostic values:
+#>                          Count Pct.    Min. n_eff
+#> (-Inf, 0.5]   (good)     27    79.4%   711       
+#>  (0.5, 0.7]   (ok)        2     5.9%   199       
+#>    (0.7, 1]   (bad)       0     0.0%   <NA>      
+#>    (1, Inf)   (very bad)  5    14.7%   14        
+#> See help('pareto-k-diagnostic') for details.
 ```
 
 ## Code of Conduct

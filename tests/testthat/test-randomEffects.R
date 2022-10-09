@@ -95,3 +95,16 @@ test_that("choice RE with expl effects", {
   expect_equal(res$dataStan$P, 4)
   expect_equal(res$dataStan$A, nrow(actorsEx))
 })
+test_that("save code", {
+  data <- structure(
+    list(dataStan = list(Q = 2)),
+    class = "goldfish.latent.data",
+    model = "DyNAM", subModel = "rate"
+  )
+  expect_error(CreateModelCode(list()))
+  expect_error(CreateModelCode(data))
+  attr(data, "subModel") <- "choice"
+  outCode <- CreateModelCode(data)
+  expect_length(outCode, 1)
+  expect_type(outCode, "character")
+})
