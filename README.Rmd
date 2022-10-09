@@ -96,7 +96,7 @@ Those information criteria can be used to compare models using `loo_compare()`.
 ```{r}
 logLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
 
-# loo and waic computation using the margina
+# loo and waic computation using the marginal
 library(loo)
 
 relEff <- relative_eff(exp(logLikMod01))

@@ -1,5 +1,5 @@
 Package: goldfish.latent
-Title: Relational Event Model with Latent Variables
+Title: Relational Event Models with Latent Variables
 Version: 0.0.1
 Authors@R: 
     person(
@@ -22,7 +22,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.1
 Imports: 
     cmdstanr (>= 0.5.2),
-    goldfish (>= 1.6.4),
+    goldfish (>= 1.6.6),
     loo,
     matrixStats,
     posterior (>= 1.2.2),

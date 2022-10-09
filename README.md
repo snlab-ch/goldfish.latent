@@ -66,11 +66,11 @@ posterior samples can be done using, for example,
 ``` r
 mod01Samples$summary("beta")
 #> # A tibble: 3 × 10
-#>   variable   mean median    sd   mad     q5   q95  rhat ess_bulk ess_tail
-#>   <chr>     <dbl>  <dbl> <dbl> <dbl>  <dbl> <dbl> <dbl>    <dbl>    <dbl>
-#> 1 beta[1]   4.94   4.93  0.400 0.377  4.29  5.61   1.00    1107.    1433.
-#> 2 beta[2]   1.64   1.63  0.206 0.210  1.31  1.97   1.00    2962.    1577.
-#> 3 beta[3]  -0.275 -0.277 0.231 0.237 -0.656 0.101  1.00    3231.    1561.
+#>   variable   mean median    sd   mad     q5    q95  rhat ess_bulk ess_tail
+#>   <chr>     <dbl>  <dbl> <dbl> <dbl>  <dbl>  <dbl> <dbl>    <dbl>    <dbl>
+#> 1 beta[1]   4.94   4.92  0.424 0.394  4.30  5.67   1.00      793.     936.
+#> 2 beta[2]   1.63   1.63  0.207 0.202  1.30  1.98   1.00     2881.    1372.
+#> 3 beta[3]  -0.272 -0.268 0.211 0.204 -0.640 0.0649 0.999    3188.    1797.
 
   # names fixed effects coincides with colnames(data2stan$dataStan$X)
 ```
@@ -87,7 +87,7 @@ Leave-One-Out approximation using Pareto smoothed importance sampling
 ``` r
 logLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
 
-# loo and waic computation using the margina
+# loo and waic computation using the marginal
 library(loo)
 
 relEff <- relative_eff(exp(logLikMod01))
@@ -98,18 +98,18 @@ looM01
 #> Computed from 2000 by 34 log-likelihood matrix
 #> 
 #>          Estimate    SE
-#> elpd_loo   -679.9 112.1
+#> elpd_loo   -679.8 112.0
 #> p_loo        17.7   8.0
-#> looic      1359.8 224.1
+#> looic      1359.7 224.1
 #> ------
 #> Monte Carlo SE of elpd_loo is NA.
 #> 
 #> Pareto k diagnostic values:
 #>                          Count Pct.    Min. n_eff
-#> (-Inf, 0.5]   (good)     27    79.4%   711       
-#>  (0.5, 0.7]   (ok)        2     5.9%   199       
-#>    (0.7, 1]   (bad)       0     0.0%   <NA>      
-#>    (1, Inf)   (very bad)  5    14.7%   14        
+#> (-Inf, 0.5]   (good)     28    82.4%   231       
+#>  (0.5, 0.7]   (ok)        0     0.0%   <NA>      
+#>    (0.7, 1]   (bad)       3     8.8%   8         
+#>    (1, Inf)   (very bad)  3     8.8%   1770      
 #> See help('pareto-k-diagnostic') for details.
 ```
 

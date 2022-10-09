@@ -59,8 +59,8 @@ posterior distribution.
 Argument \code{type} allows to compute the conditional or marginal version of the
 log-likelihood. The marginal version uses a Gauss-Hermite quadrature
 approximation to integrate out the random effects
-\insertCite{Merkle2019}{Rdpack}. The code is an adaptation from
-the supplementary material of \insertCite{Merkle2019;textual}{Rdpack}.
+\insertCite{Merkle2019}{goldfish.latent}. The code is an adaptation from
+the supplementary material of \insertCite{Merkle2019;textual}{goldfish.latent}.
 }
 \examples{
 \donttest{
