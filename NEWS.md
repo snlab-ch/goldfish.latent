@@ -1,3 +1,5 @@
+# goldfish.latent (development version)
+
 # goldfish.latent 0.0.1
 
 * Random-effects for DyNAM-choice model functionality is added:
