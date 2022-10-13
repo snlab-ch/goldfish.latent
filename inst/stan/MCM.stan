@@ -2,7 +2,7 @@
 // Multinomial choice model with P covariates
 // Update to avoid warnings from deprecated syntax
 // trying changing log_sum_exp in transformed quantities for speed up
-//   from mc-stan discourse: speeding up a hierarchical begative binomial
+//   from mc-stan discourse: speeding up a hierarchical negative binomial
 //     regression with a huge number of groups
 //
 data {

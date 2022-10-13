@@ -17,12 +17,6 @@
 #' indicates that the `effect(network)` is added to the model having
 #' random effects and those could be explain by the effects included on the
 #' right hand side.
-#' For the moment, it is only possible to add actors' covariates using the
-#' effect `egoAlterInt()` and fixed the alter attribute to a variable with
-#' constant value 1. Further enhancements would allow define it using
-#' other monadic statistics like `indeg()`, `outdeg()`, `nodeTrans()` and using
-#' the `ego()` effect to include actors' covariates.
-#'
 #'
 #' @param randomEffects a `list`, each component is a `formula` and represents a
 #' random effect to include in the model. Each `formula` has on the left hand
@@ -74,7 +68,7 @@
 #' callsDependent <- defineDependentEvents(
 #'   events = calls, nodes = actors, defaultNetwork = callNetwork
 #' )
-#' data2stan <- CreateDataModel(
+#' data2stan <- CreateData(
 #'   randomEffects = list(inertia ~ 1),
 #'   fixedEffects = callsDependent ~ recip + trans
 #' )
@@ -254,11 +248,10 @@ CreateData <- function(
     effectDescription = effectDescription
   ),
   class = "goldfish.latent.data",
-  model = "DyNAM",
+  model = "DyNAMRE",
   subModel = "choice"
   ))
 }
-
 
 ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
   stopifnot(inherits(reFormula, "formula"))
@@ -293,73 +286,6 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
   # formula after modifications
   return(reformulate(effectForMod, response = reFormula[[2]]))
 }
-
-
-#' Create a Stan code file
-#'
-#' `goldfish.latent` offers working version of the models to work with Stan.
-#' Users should have installed `cmdstanr` package and `CmdStan` before.
-#' Follow the instructions instructions from `cmdstanr` documentation.
-#'
-#' `cmdstanr` functionalities makes possible for users to write a local copy
-#' of the Stan code and modify it for other purposes.
-#' The default in [cmdstanr::write_stan_file()] is to write the model in a
-#' temporal folder. Using the `dir` argument is possible to write the model
-#' in a folder specifies by the user.
-#'
-#' @param dataStan a `list` output of a [CreateData()] call.
-#' @param ... additional arguments to be passed to
-#'   [cmdstanr::write_stan_file()]
-#'
-#' @return The path to a file with `stan` extension.
-#' It contains the code with the specification of data structure, priors,
-#' and log-likelihood of the given model.
-#'
-#' @export
-#'
-#' @examples
-#' \donttest{
-#' library(goldfish)
-#' library(cmdstanr)
-#' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
-#'   events = calls, nodes = actors, defaultNetwork = callNetwork
-#' )
-#' data2stan <- CreateDataModel(
-#'   randomEffects = list(inertia ~ 1),
-#'   fixedEffects = callsDependent ~ recip + trans
-#' )
-#'
-#' stanCode <- CreateModelCode(data2stan)
-#' }
-CreateModelCode <- function(dataStan, ...) {
-  stopifnot(inherits(dataStan, "goldfish.latent.data"))
-
-  model <- attr(dataStan, "model")
-  subModel <- attr(dataStan, "subModel")
-
-  if (model == "DyNAM" && subModel == "choice") {
-    if (dataStan[["dataStan"]][["Q"]] == 1) {
-      stanCode <- readLines(
-        system.file("stan", "MCM_RE1.stan", package = "goldfish.latent")
-      )
-    }
-  } else stop("Not yet implemented for more than one random effect")
-
-  if (requireNamespace("cmdstanr", quietly = TRUE) &&
-      cmdstanr::cmdstan_version() >= "2.29.2") {
-    model <- cmdstanr::write_stan_file(code = stanCode)
-  } else
-    stop(
-      dQuote("cmdstanr"), " package and a working version of",
-      dQuote("CmdStan"), "are required.",
-      " Please follow Stan documentation for instructions on how to install.")
-
-  return(model)
-}
-
 
 #' Compute log-likelihood using MCMC samples
 #'
