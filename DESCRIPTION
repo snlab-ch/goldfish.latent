@@ -17,7 +17,7 @@ Description: Bayesian estimation of relational event models with latent variable
     in Stan are used to perform inferences of the proposed models.
 License: MIT + file LICENSE
 Encoding: UTF-8
-Depends: R (>= 4.2.0)
+Depends: R (>= 4.1.0)
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.1
 Imports: 

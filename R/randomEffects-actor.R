@@ -445,18 +445,18 @@ ComputeLogLikelihood <- function(
   }
   #
   if (type == "conditional") {
-    logLik <- if (!is.null(eventsPerCore)) {
-      parallel::clusterApplyLB(
+    if (!is.null(eventsPerCore)) {
+      logLik <- parallel::clusterApplyLB(
         cl = cl,
         seq.int(length(eventsPerCore)),
         fun = LogLikCondRE,
         draws = draws,
         dataList = dataStan[["dataStan"]],
         eventsPerCore = eventsPerCore
-      ) |>
-        Reduce(f = cbind, x = _)
+      )
+      logLik <- Reduce(f = cbind, x = logLik)
     } else
-      LogLikCondRE(
+      logLik <- LogLikCondRE(
         eventsIter = NULL,
         draws = draws,
         dataList = dataStan[["dataStan"]],
