@@ -203,7 +203,10 @@ CreateDataSR <- function(
   dataStan <- c(
     if (!is.null(rateEffects)) dataStanRate,
     if (!is.null(choiceEffects)) dataStanChoice,
-    list(kR = kRegimes)
+    list(
+      kR = kRegimes,
+      alpha = c(floor((kRegimes - 1) / (1 - 0.8)), 1)
+    )
   )
 
   return(structure(list(

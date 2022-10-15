@@ -3,6 +3,7 @@
 // Switching regime dynamics with kR states
 data {
   int<lower = 2> kR;
+  vector[2] alpha;
   //
   int Nrate; // number of events * present actors
   int Trate; // number of events
@@ -22,15 +23,13 @@ data {
 parameters {
   array[kR] simplex[kR] theta; // transition probabilities
 
-  ordered[kR] intercept;
-  array[kR] vector[Prate - 1] betaWOInt;
+  array[Prate] ordered[kR] betaOrd;
 }
 transformed parameters {
   array[kR] vector[Prate] beta;
-  for (n in 1:kR) {
-    beta[n][1] = intercept[n];
-    beta[n][2:Prate] = betaWOInt[n];
-  }
+  for (p in 1:Prate)
+    for (n in 1:kR)
+      beta[n, p] = betaOrd[p, n];
 
   simplex[kR] pi1;
   matrix[kR, kR] ta;
@@ -45,10 +44,18 @@ transformed parameters {
     (diag_matrix(rep_vector(1.0, kR)) - ta + rep_matrix(1, kR, kR))));
 }
 model {
-  // priors for beta
+  vector[kR] alphas;
   for (n in 1:kR) {
-    target += normal_lpdf(beta[n][1] | -10, 10);
-    target += normal_lpdf(beta[n][2:Prate] | 0, 4);
+    alphas = rep_vector(alpha[2], kR);
+    alphas[n] = alpha[1];
+    target += dirichlet_lpdf(theta[n] | alphas); // prior for trans probs
+  }
+
+  for (p in 1:Prate) { // priors for beta
+    if (p == 1)
+      target += normal_lpdf(betaOrd[p] | -10, 10);
+    else
+      target += normal_lpdf(betaOrd[p] | 0, 4);
   }
 
   array[kR] vector[kR] log_theta_tr;
