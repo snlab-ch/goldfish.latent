@@ -23,13 +23,21 @@ data {
 parameters {
   array[kR] simplex[kR] theta; // transition probabilities
 
-  array[Prate] ordered[kR] betaOrd;
+  ordered[kR] intercept;
+  array[kR] vector[Prate - 1] betaWOInt;
+
 }
 transformed parameters {
+  //array[kR] vector[Prate] beta;
+  //for (p in 1:Prate)
+  //  for (n in 1:kR)
+  //    beta[n, p] = betaOrd[p, n];
+
   array[kR] vector[Prate] beta;
-  for (p in 1:Prate)
-    for (n in 1:kR)
-      beta[n, p] = betaOrd[p, n];
+  for (n in 1:kR) {
+    beta[n][1] = intercept[n];
+    beta[n][2:Prate] = betaWOInt[n];
+  }
 
   simplex[kR] pi1;
   matrix[kR, kR] ta;
@@ -74,13 +82,13 @@ model {
   // forward algorithm implementation
 
   for(n in 1:kR) // first observation
-    lp[n] = log(pi1[n]) + (isDependent[1] ? xb[n][choseRate[1]] : 0) -
+    lp[n] = log(pi1[n]) + isDependent[1] * xb[n][choseRate[1]] -
         timespan[1] * exp(log_sum_exp(xb[n][startRate[1]:endRate[1]]));
 
   for (t in 2:Trate) { // looping over observations
     for (n in 1:kR) // looping over states
       lp_p1[n] = log_sum_exp(log_theta_tr[n] + lp) +
-      (isDependent[t] ? xb[n][choseRate[t]] : 0) -
+      isDependent[t] * xb[n][choseRate[t]] -
         timespan[t] * exp(log_sum_exp(xb[n][startRate[t]:endRate[t]]));
 
     lp = lp_p1;

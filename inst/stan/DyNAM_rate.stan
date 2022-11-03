@@ -31,7 +31,7 @@ model {
     xb = Xrate * beta;
 
     for(t in 1:Trate) {
-      target += (isDependent[t] ? xb[choseRate[t]] : 0) -
+      target += isDependent[t] * xb[choseRate[t]] -
         timespan[t] * exp(log_sum_exp(xb[startRate[t]:endRate[t]]));
     }
   }
