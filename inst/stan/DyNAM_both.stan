@@ -47,20 +47,14 @@ model {
 
     vector[Nchoice] xbChoice;
     xbChoice = Xchoice * betaChoice;
-    int tChoice = 1;
 
-    for(t in 1:Trate) {
-      if (isDependent[t]) {
-        target += xbRate[choseRate[t]] -
-          timespan[t] * exp(log_sum_exp(xbRate[startRate[t]:endRate[t]])) +
-          xbChoice[choseChoice[tChoice]] -
-          log_sum_exp(xbChoice[startChoice[tChoice]:endChoice[tChoice]]);
 
-        tChoice += 1;
-      } else {
-        target += -timespan[t] *
-          exp(log_sum_exp(xbRate[startRate[t]:endRate[t]]));
-      }
-    }
+    for(t in 1:Trate)
+        target += isDependent[t] * xbRate[choseRate[t]] -
+          timespan[t] * exp(log_sum_exp(xbRate[startRate[t]:endRate[t]]));
+
+    for (t in 1:Tchoice)
+      target += xbChoice[choseChoice[t]] -
+          log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
   }
 }
