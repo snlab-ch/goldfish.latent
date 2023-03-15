@@ -132,9 +132,9 @@ CreateData <- function(
 
   xDyNAM <- Reduce(
     c,
-    lapply(reTerms, \(x) c(attr(x, "term.labels"), as.character(x[[2]])))
+    lapply(reTerms, \(x) c(attr(x, "term.labels"), deparse(x[[2]])))
   )
-  reDyNAM <- vapply(reTerms, \(x) as.character(x[[2]]), character(1))
+  reDyNAM <- vapply(reTerms, \(x) Reduce(paste, deparse(x[[2]])), character(1))
 
   termsDyNAM <- c(xDyNAM, attr(feTerms, "term.labels"),
                   attr(cstrTerms, "term.labels")) |> unique()
@@ -215,9 +215,9 @@ CreateData <- function(
     \(x) paste(
       if (length(attr(x, "term.labels")) > 0)
         paste(
-          namesEffects[match(as.character(x[[2]]), termsDyNAM)], "/",
+          namesEffects[match(deparse(x[[2]]), termsDyNAM)], "/",
           namesEffects[match(attr(x, "term.labels"), termsDyNAM)]
-        ) else namesEffects[match(as.character(x[[2]]), termsDyNAM)],
+        ) else namesEffects[match(deparse(x[[2]]), termsDyNAM)],
       collapse = " + "
     )
   ) |>
