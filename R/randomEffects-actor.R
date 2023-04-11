@@ -241,7 +241,9 @@ CreateData <- function(
       sender = expandedDF[, "senderIx"],
       X = Xmat,
       Z = expandedDF[, namesEffects[match(reDyNAM, termsDyNAM)]],
-      chose = which(expandedDF[, "selected"])
+      chose = which(expandedDF[, "selected"]),
+      event = expandedDF[, "event"],
+      selected = expandedDF[, "selected"]
     ),
     sendersIx = sendersIx,
     namesEffects = namesEffects,
