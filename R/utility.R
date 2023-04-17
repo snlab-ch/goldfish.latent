@@ -77,3 +77,203 @@ CreateModelCode <- function(dataStan, ...) {
 
   return(model)
 }
+
+
+SampleData <- function(
+    data,
+    fractionChoiceSet = 0.1, methodChoiceSet = "srswor",
+    fractionEvents = 1, methodEvents = "systematic"
+) {
+  stopifnot(
+    inherits(data, "goldfish.latent.data"),
+    is.numeric(fractionChoiceSet) &&
+      length(fractionChoiceSet) == 1 &&
+      fractionChoiceSet > 0 && fractionChoiceSet <= 1,
+    is.numeric(fractionEvents) &&
+      length(fractionEvents) == 1 &&
+      fractionEvents > 0 && fractionEvents <= 1,
+    is.character(methodChoiceSet) && length(methodChoiceSet) == 1,
+    is.character(methodEvents) && length(methodEvents) == 1
+  )
+
+  methodChoiceSet <- match.arg(methodChoiceSet, c("srswor", "systematic"))
+  methodEvents <- match.arg(methodEvents, c("systematic", "srswor"))
+
+  dataStan <- data$dataStan
+
+  cat("size rate", dataStan$Trate, "size choice", dataStan$Tchoice, "\n")
+  print(attributes(data))
+  if (attr(data, "model") %in% c("DyNAMSR") &&
+      attr(data, "subModel") %in% c("both", "rate")) {
+    dataStan <- within(
+      dataStan,
+      {
+        expandedDF <- as.data.frame(Xrate)
+        expandedDF$event <- rep(seq_len(Trate), endRate - startRate + 1)
+        expandedDF$selected <- seq_len(Nrate) %in% choseRate
+
+        if (fractionEvents < 1) {
+          sampleEvents <- do.call(
+            methodEvents,
+            list(N = Trate, fraction = fractionEvents)
+          )
+
+          if (attr(data, "subModel") == "both") {
+            if (Trate != Tchoice) {
+              eventsChoice <- seq_len(Tchoice)
+              eventsRate <- rep(0, Trate)
+              eventsRate[isDependent] <- eventsChoice
+              rm(eventsChoice)
+            } else eventsRate <- seq_len(Trate)
+
+            sampleEventsChoice <- eventsRate[sampleEvents]
+            sampleEventsChoice <- sampleEventsChoice[sampleEventsChoice > 0]
+            rm(eventsRate)
+          }
+
+          Trate <- length(sampleEvents)
+          expandedDF <- subset(expandedDF, event %in% sampleEvents)
+          isDependent <- isDependent[sampleEvents]
+          timespan <- timespan[sampleEvents]
+          rm(sampleEvents)
+        }
+
+        if (fractionChoiceSet < 1) {
+
+          expandedDF <- by(
+            expandedDF,
+            expandedDF[, c("selected", "event")],
+            \(x) {
+              sample <- do.call(
+                methodChoiceSet,
+                list(N = nrow(x), fraction = fractionChoiceSet)
+              )
+              x[sample, ]
+            }
+          ) |> Reduce(f = rbind, x = _)
+
+        }
+
+        Nrate <- nrow(expandedDF)
+        idxEvents <- tapply(seq_len(Nrate), expandedDF$event, range) |>
+          simplify2array()
+        startRate <- idxEvents[1, ]
+        endRate <- idxEvents[2, ]
+        Xrate <- as.matrix(expandedDF[, colnames(Xrate)])
+        choseRate <- rep(0, Trate)
+        choseRate[isDependent] <- which(expandedDF$selected)
+
+        rm(idxEvents, expandedDF)
+      })
+  }
+
+  if (attr(data, "model") %in% c("DyNAMSR") &&
+             attr(data, "subModel") %in% c("both", "choice")) {
+    dataStan <- within(
+      dataStan,
+      {
+        expandedDF <- cbind(
+          as.data.frame(Xchoice),
+          data.frame(
+            event = rep(seq_len(Tchoice), endChoice - startChoice + 1),
+            selected = seq_len(Nchoice) %in% choseChoice
+          )
+        )
+
+        if (fractionEvents < 1) {
+
+          if (attr(data, "subModel") != "both") {
+            sampleEventsChoice <- do.call(
+              methodEvents,
+              list(N = Tchoice, fraction = fractionEvents)
+            )
+          }
+
+
+          expandedDF <- subset(expandedDF, event %in% sampleEventsChoice)
+          Tchoice <- length(sampleEventsChoice)
+
+          rm(sampleEventsChoice)
+        }
+
+        if (fractionChoiceSet < 1) {
+          expandedDF <- by(
+            expandedDF,
+            expandedDF[, c("selected", "event")],
+            \(x) {
+              sample <- do.call(
+                methodChoiceSet,
+                list(N = nrow(x), fraction = fractionChoiceSet)
+              )
+              x[sample, ]
+            }
+          ) |> Reduce(f = rbind, x = _)
+        }
+
+        Nchoice <- nrow(expandedDF)
+        idxEvents <- tapply(seq_len(Nchoice), expandedDF$event, range) |>
+          simplify2array()
+        startChoice <- idxEvents[1, ]
+        endChoice <- idxEvents[2, ]
+        Xchoice <- as.matrix(expandedDF[, colnames(Xchoice)])
+        choseChoice <- which(expandedDF$selected)
+
+        rm(idxEvents, expandedDF)
+      }
+    )
+  }
+
+  cat("size rate", dataStan$Trate, "size choice", dataStan$Tchoice, "\n")
+
+  data$dataStan <- dataStan
+  return(data)
+}
+
+
+AddColumns <- function(arrayTo, arrayFrom) {
+  missCols <- setdiff(
+    colnames(arrayFrom), colnames(arrayTo)
+  )
+  arrayTo <- as.data.frame(arrayTo)
+  if (length(missCols) > 0)
+    for (colAdd in missCols) {
+      arrayTo[, colAdd] <- ""
+    }
+
+  return(arrayTo)
+}
+
+systematic <- function(N, fraction) {
+  stopifnot(
+    is.numeric(N) & length(N) == 1 && N >= 1,
+    is.numeric(fraction) && length(fraction) == 1 &&
+      fraction > 0 && fraction <= 1
+  )
+
+  if (N == 1) return(1)
+  sampleSize <- ceiling(N * fraction)
+
+  if (sampleSize >= N) return(seq_len(N))
+
+  jump <- floor(1 / fraction)
+  r <- sample(jump, 1)
+  # cUpper <- N - sampleSize * jump
+  # n <- (r <= cUpper) + jump
+
+  return(r + (jump * (seq_len(sampleSize) - 1)))
+}
+
+srswor <- function(N, fraction) {
+  stopifnot(
+    is.numeric(N) & length(N) == 1 && N >= 1,
+    is.numeric(fraction) && length(fraction) == 1 &&
+      fraction > 0 && fraction <= 1
+  )
+
+  if (N == 1) return(1)
+  sampleSize <- ceiling(N * fraction)
+
+  if (sampleSize >= N) return(seq_len(N))
+
+  sort(sample.int(N, ceiling(N * fraction)))
+}

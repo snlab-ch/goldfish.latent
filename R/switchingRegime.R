@@ -163,7 +163,7 @@ CreateDataSR <- function(
         namesEffects
       ),
       data.frame(
-        event = rep(seq.int(nEvents), dataProcessedChoice$n_candidates),
+        event = rep(seq_len(nEvents), dataProcessedChoice$n_candidates),
         selected = sequence(dataProcessedChoice$n_candidates) ==
           rep(dataProcessedChoice$selected, dataProcessedChoice$n_candidates)
       )
@@ -182,7 +182,7 @@ CreateDataSR <- function(
     # create objects for Stan
     nTotal <- nrow(expandedDF)
 
-    idxEvents <- tapply(seq.int(nTotal), expandedDF$event, range) |>
+    idxEvents <- tapply(seq_len(nTotal), expandedDF$event, range) |>
       simplify2array()
 
     Xmat <- as.matrix(expandedDF[, namesEffects])
@@ -209,11 +209,33 @@ CreateDataSR <- function(
     )
   )
 
+  if (!is.null(effectDescription) &
+      !is.null(dataProcessedRate$effectDescription)) {
+    if (!setequal(
+      colnames(effectDescription),
+      colnames(dataProcessedRate$effectDescription)
+    )) {
+      dataProcessedRate$effectDescription <- AddColumns(
+        dataProcessedRate$effectDescription,
+        effectDescription
+      )
+
+      effectDescription <- AddColumns(
+        effectDescription,
+        dataProcessedRate$effectDescription
+      )
+    }
+  }
+
   return(structure(list(
     dataStan = dataStan,
-    namesEffects = c(namesEffects, dataProcessedRate$namesEffects),
+    namesEffects = c(
+      dataProcessedRate$namesEffects,
+      namesEffects
+    ),
     effectDescription = rbind(
-      effectDescription, dataProcessedRate$effectDescription
+      dataProcessedRate$effectDescription,
+      effectDescription
     )
   ),
   class = "goldfish.latent.data",
