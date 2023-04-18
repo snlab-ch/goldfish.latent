@@ -9,6 +9,7 @@
 #' @param choiceEffects a `formula` specification as in [goldfish::estimate()].
 #' @param model Current version only support `"DyNAM"` model, enhancements
 #' on the code would allow to use `"REM"` model too.
+#' @param envir an `environment` where the formula objects are available.
 #' @inheritParams CreateData
 #'
 #' @return a list with the following components.
@@ -43,7 +44,8 @@ CreateDataSR <- function(
     kRegimes = 3,
     supportConstraint = NULL,
     preprocessArgs = NULL,
-    progress = getOption("progress")
+    progress = getOption("progress"),
+    envir = new.env()
 ) {
   ### 0. check parameters----
   model <- match.arg(model)
@@ -60,8 +62,6 @@ CreateDataSR <- function(
 
   # setting initial values of some arguments
   if (is.null(progress)) progress <- FALSE
-
-  envir <- new.env()
 
   if (!is.null(rateEffects) && !is.null(choiceEffects)) {
     subType <- "both"

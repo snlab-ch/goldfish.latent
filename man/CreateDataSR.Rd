@@ -11,7 +11,8 @@ CreateDataSR(
   kRegimes = 3,
   supportConstraint = NULL,
   preprocessArgs = NULL,
-  progress = getOption("progress")
+  progress = getOption("progress"),
+  envir = new.env()
 )
 }
 \arguments{
@@ -38,6 +39,8 @@ event sequence.}
 
 \item{progress}{logical argument passed to \code{\link[goldfish:GatherPreprocessing]{goldfish::GatherPreprocessing()}}
 to show the progress of the preprocessing of the events sequence.}
+
+\item{envir}{an \code{environment} where the formula objects are available.}
 }
 \value{
 a list with the following components.

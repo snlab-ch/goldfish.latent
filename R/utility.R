@@ -79,6 +79,33 @@ CreateModelCode <- function(dataStan, ...) {
 }
 
 
+#' sample preprocessed data
+#'
+#' For arguments `methodChoiceSet` and `methodEvents` the available methods are
+#' `"systematic"` and `"srswor"`. They correspond to
+#'   systematic sampling and simple random sampling without replacement,
+#'   respectively. It is possible to use an external function that has arguments
+#'   `N` and `fraction` and return a numerical vector of the samples
+#'   to keep is possible.
+#' @param data output from [CreateDataSR()] or [CreateData()]
+#' @param fractionChoiceSet numerical value that indicates the proportion of
+#'   alternatives to sample from the choice set or the compiting actors in the
+#'   choice and rate model, respectively.
+#' @param methodChoiceSet character value indicating the function name used to
+#'   generate the sample.
+#' @param fractionEvents numerical value that indicates the proportion of
+#'   events to sample. When the `data` object contains data for both sub-models,
+#'   a pair sample is selected, i.e., the sample events contains information of
+#'   the rate and choice sub-models.
+#' @param methodEvents character value indicating the function name used to
+#'   generate the sample.
+#'
+#' @return an object with the same meta information as `data` with the sampled
+#' events and alternative choices.
+#' @export
+#'
+#' @examples
+#' sampledData <- SampleData(data)
 SampleData <- function(
     data,
     fractionChoiceSet = 0.1, methodChoiceSet = "srswor",
@@ -101,8 +128,6 @@ SampleData <- function(
 
   dataStan <- data$dataStan
 
-  cat("size rate", dataStan$Trate, "size choice", dataStan$Tchoice, "\n")
-  print(attributes(data))
   if (attr(data, "model") %in% c("DyNAMSR") &&
       attr(data, "subModel") %in% c("both", "rate")) {
     dataStan <- within(
@@ -139,7 +164,6 @@ SampleData <- function(
         }
 
         if (fractionChoiceSet < 1) {
-
           expandedDF <- by(
             expandedDF,
             expandedDF[, c("selected", "event")],
@@ -189,7 +213,6 @@ SampleData <- function(
             )
           }
 
-
           expandedDF <- subset(expandedDF, event %in% sampleEventsChoice)
           Tchoice <- length(sampleEventsChoice)
 
@@ -222,8 +245,6 @@ SampleData <- function(
       }
     )
   }
-
-  cat("size rate", dataStan$Trate, "size choice", dataStan$Tchoice, "\n")
 
   data$dataStan <- dataStan
   return(data)
