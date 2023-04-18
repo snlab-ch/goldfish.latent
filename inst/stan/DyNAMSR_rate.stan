@@ -57,13 +57,13 @@ model {
     alphas = rep_vector(alpha[2], kR);
     alphas[n] = alpha[1];
     target += dirichlet_lpdf(theta[n] | alphas); // prior for trans probs
-  }
 
-  for (p in 1:Prate) { // priors for beta
-    if (p == 1)
-      target += normal_lpdf(betaOrd[p] | -10, 10);
-    else
-      target += normal_lpdf(betaOrd[p] | 0, 4);
+    for (p in 1:Prate) { // priors for beta
+      if (p == 1)
+        target += normal_lpdf(beta[n, p] | -10, 10);
+      else
+        target += normal_lpdf(beta[n, p] | 0, 4);
+    }
   }
 
   array[kR] vector[kR] log_theta_tr;
@@ -95,4 +95,44 @@ model {
   }
 
   target += log_sum_exp(lp);
+}
+generated quantities {
+  array[Trate] int<lower=1, upper=kR> zstar;
+  real logp_zstar;
+
+  array[kR] vector[Nrate] xb;
+  for (n in 1:kR)
+    xb[n] = Xrate * beta[n];
+
+  { // Viterbi algorithm
+    array[Trate, kR] int bpointer; // backpointer to the most likely previous state on the most probable path
+    array[Trate, kR] real delta; // max prob for the sequence up to t
+    // that ends with an emission from state k
+    for(k in 1:kR) // first observation
+      delta[1, k] = log(pi1[k]) + xb[k][choseRate[1]] -
+          log_sum_exp(xb[k][startRate[1]:endRate[1]]);
+
+    for (t in 2:Trate) {
+      for (j in 1:kR) { // i = current (t)
+        delta[t, j] = negative_infinity();
+        for (i in 1:kR) { // i = previous (t-1)
+          real logp;
+          logp = delta[t-1, i] + log(theta[i, j]) +
+            xb[j][choseRate[t]] -
+            log_sum_exp(xb[j][startRate[t]:endRate[t]]);
+            if (logp > delta[t, j]) {
+              bpointer[t, j] = i;
+              delta[t, j] = logp;
+            }
+        }
+      }
+    }
+    logp_zstar = max(delta[Trate]);
+    for (j in 1:kR)
+      if (delta[Trate, j] == logp_zstar)
+        zstar[Trate] = j;
+    for (t in 1:(Trate - 1)) {
+      zstar[Trate - t] = bpointer[Trate - t + 1, zstar[Trate - t + 1]];
+    }
+  }
 }

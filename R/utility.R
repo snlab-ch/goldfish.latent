@@ -56,7 +56,7 @@ CreateModelCode <- function(dataStan, ...) {
       stop("Not yet implemented, use independent submodels")
       fileModel <- "DyNAMSR_both_ord.stan"
     } else if (subModel == "rate" && dataStan[["dataStan"]][["hasIntercept"]]) {
-      fileModel <- "DyNAM_rate.stan"
+      fileModel <- "DyNAMSR_rate.stan"
     } else if (subModel == "choice") {
       fileModel <- "DyNAMSR_choice.stan"
     } else stop("not implemented yet")
