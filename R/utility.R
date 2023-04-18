@@ -174,7 +174,7 @@ SampleData <- function(
               )
               x[sample, ]
             }
-          ) |> Reduce(f = rbind, x = _)
+          ) |> \(x) Reduce(f = rbind, x = x)
 
         }
 
@@ -230,7 +230,7 @@ SampleData <- function(
               )
               x[sample, ]
             }
-          ) |> Reduce(f = rbind, x = _)
+          ) |> \(x) Reduce(f = rbind, x = x)
         }
 
         Nchoice <- nrow(expandedDF)

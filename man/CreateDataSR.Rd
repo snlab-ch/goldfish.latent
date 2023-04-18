@@ -11,6 +11,7 @@ CreateDataSR(
   kRegimes = 3,
   supportConstraint = NULL,
   preprocessArgs = NULL,
+  scale = FALSE,
   progress = getOption("progress"),
   envir = new.env()
 )
@@ -36,6 +37,9 @@ time varying changes of composition of the actors set.}
 \item{preprocessArgs}{a list with additional preprocess arguments used by
 \code{\link[goldfish:GatherPreprocessing]{goldfish::GatherPreprocessing()}} to compute the changes statistics of the
 event sequence.}
+
+\item{scale}{logical value. Whether to standardize the effect stats at
+the end.}
 
 \item{progress}{logical argument passed to \code{\link[goldfish:GatherPreprocessing]{goldfish::GatherPreprocessing()}}
 to show the progress of the preprocessing of the events sequence.}

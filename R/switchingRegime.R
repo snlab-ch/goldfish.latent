@@ -9,6 +9,8 @@
 #' @param choiceEffects a `formula` specification as in [goldfish::estimate()].
 #' @param model Current version only support `"DyNAM"` model, enhancements
 #' on the code would allow to use `"REM"` model too.
+#' @param scale logical value. Whether to standardize the effect stats at
+#' the end.
 #' @param envir an `environment` where the formula objects are available.
 #' @inheritParams CreateData
 #'
@@ -44,6 +46,7 @@ CreateDataSR <- function(
     kRegimes = 3,
     supportConstraint = NULL,
     preprocessArgs = NULL,
+    scale = FALSE,
     progress = getOption("progress"),
     envir = new.env()
 ) {
@@ -77,6 +80,7 @@ CreateDataSR <- function(
     " arguments are NULL objects. Specify at least one model."
   )
   # process data
+  scaleStats <- if (scale) list() else NULL
   if (!is.null(rateEffects)) {
     dataProcessedRate <- GatherPreprocessing(
       formula = rateEffects,
@@ -114,6 +118,18 @@ CreateDataSR <- function(
       rm(stat_all_events, n_candidates, sender,
          namesEffects, effectDescription, selected)
     })
+
+    if (scale) {
+      Xrate <- scale(
+        if (dataStanRate$hasIntercept)
+          dataStanRate$Xrate[, -1] else dataStanRate$Xrate
+      )
+      scaleStats[["rate"]] <- attributes(Xrate)
+
+      if (dataStanRate$hasIntercept)
+        dataStanRate$Xrate[, -1] <- Xrate[, ] else
+          dataStanRate$Xrate <- Xrate[, ]
+    }
 
     # table(idxEvents[1, ] == dataStanRate$startRate)
     # table(idxEvents[2, ] == dataStanRate$endRate)
@@ -196,6 +212,13 @@ CreateDataSR <- function(
       Xchoice = Xmat,
       choseChoice = which(expandedDF[, "selected"])
     )
+
+    if (scale) {
+      Xchoice <- scale(Xmat)
+      scaleStats[["choice"]] <- attributes(Xchoice)
+
+      dataStanChoice$Xchoice <- Xchoice[, ]
+    }
   } else {
     namesEffects <- effectDescription <- NULL
   }
@@ -236,7 +259,8 @@ CreateDataSR <- function(
     effectDescription = rbind(
       dataProcessedRate$effectDescription,
       effectDescription
-    )
+    ),
+    scaleStats = scaleStats
   ),
   class = "goldfish.latent.data",
   model = "DyNAMSR",
