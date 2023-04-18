@@ -127,6 +127,7 @@ SampleData <- function(
   methodEvents <- match.arg(methodEvents, c("systematic", "srswor"))
 
   dataStan <- data$dataStan
+  CollapseSample <- function(x) Reduce(f = rbind, x = x)
 
   if (attr(data, "model") %in% c("DyNAMSR") &&
       attr(data, "subModel") %in% c("both", "rate")) {
@@ -174,7 +175,7 @@ SampleData <- function(
               )
               x[sample, ]
             }
-          ) |> \(x) Reduce(f = rbind, x = x)
+          ) |> CollapseSample()
 
         }
 
@@ -230,7 +231,7 @@ SampleData <- function(
               )
               x[sample, ]
             }
-          ) |> \(x) Reduce(f = rbind, x = x)
+          ) |> CollapseSample()
         }
 
         Nchoice <- nrow(expandedDF)
