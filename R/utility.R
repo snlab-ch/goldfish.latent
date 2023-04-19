@@ -299,3 +299,21 @@ srswor <- function(N, fraction) {
 
   sort(sample.int(N, ceiling(N * fraction)))
 }
+
+RescaleCoefs <- function(
+    beta, scaleStats, offset = 0, isRate = TRUE
+) {
+  beta2 <- beta ## inherit names etc.
+
+  if (isRate) {
+    mu <- scaleStats$rate$`scaled:center`
+    sigma <- scaleStats$rate$`scaled:scale`
+
+    beta2[-1] <- beta[-1] / sigma
+    beta2[1]  <- beta[1] + offset - sum(beta2[-1] * mu)
+  } else {
+    sigma <- scaleStats$choice$`scaled:scale`
+    beta2 <- beta / sigma
+  }
+  return(beta2)
+}

@@ -16,23 +16,25 @@ data {
   //
   array[Trate] real<lower = 0> timespan;
   array[Trate] int<lower = 0, upper = 1> isDependent;
+
+  real offsetInt;
 }
 parameters {
   vector[Prate] beta;
 }
 model {
   // priors
-  target += normal_lpdf(beta[1] | -10, 10);
-  target += normal_lpdf(beta[2:Prate] | 0, 4);
+  target += normal_lpdf(beta| 0, 4);
 
   // helper for likelihood
   {
     vector[Nrate] xb;
-    xb = Xrate * beta;
+    xb = Xrate * beta + offsetInt;
 
     for(t in 1:Trate) {
-      target += isDependent[t] * xb[choseRate[t]] -
-        timespan[t] * exp(log_sum_exp(xb[startRate[t]:endRate[t]]));
+      if (timespan[t] > 0)
+        target += isDependent[t] * xb[choseRate[t]] -
+          timespan[t] * exp(log_sum_exp(xb[startRate[t]:endRate[t]]));
     }
   }
 }
