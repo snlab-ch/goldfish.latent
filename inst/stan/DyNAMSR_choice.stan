@@ -85,43 +85,43 @@ model {
 
   target += log_sum_exp(lp);
 }
-generated quantities {
-  array[Tchoice] int<lower=1, upper=kR> zstar;
-  real logp_zstar;
-
-  array[kR] vector[Nchoice] xbChoice;
-  for (n in 1:kR)
-    xbChoice[n] = Xchoice * betaChoice[n];
-
-  { // Viterbi algorithm
-    array[Tchoice, kR] int bpointer; // backpointer to the most likely previous state on the most probable path
-    array[Tchoice, kR] real delta; // max prob for the sequence up to t
-    // that ends with an emission from state k
-    for(k in 1:kR) // first observation
-      delta[1, k] = log(pi1[k]) + xbChoice[k][choseChoice[1]] -
-          log_sum_exp(xbChoice[k][startChoice[1]:endChoice[1]]);
-
-    for (t in 2:Tchoice) {
-      for (j in 1:kR) { // i = current (t)
-        delta[t, j] = negative_infinity();
-        for (i in 1:kR) { // i = previous (t-1)
-          real logp;
-          logp = delta[t-1, i] + log(theta[i, j]) +
-            xbChoice[j][choseChoice[t]] -
-            log_sum_exp(xbChoice[j][startChoice[t]:endChoice[t]]);
-            if (logp > delta[t, j]) {
-              bpointer[t, j] = i;
-              delta[t, j] = logp;
-            }
-        }
-      }
-    }
-    logp_zstar = max(delta[Tchoice]);
-    for (j in 1:kR)
-      if (delta[Tchoice, j] == logp_zstar)
-        zstar[Tchoice] = j;
-    for (t in 1:(Tchoice - 1)) {
-      zstar[Tchoice - t] = bpointer[Tchoice - t + 1, zstar[Tchoice - t + 1]];
-    }
-  }
-}
+// generated quantities {
+//   array[Tchoice] int<lower=1, upper=kR> zstar;
+//   real logp_zstar;
+//
+//   array[kR] vector[Nchoice] xbChoice;
+//   for (n in 1:kR)
+//     xbChoice[n] = Xchoice * betaChoice[n];
+//
+//   { // Viterbi algorithm
+//     array[Tchoice, kR] int bpointer; // backpointer to the most likely previous state on the most probable path
+//     array[Tchoice, kR] real delta; // max prob for the sequence up to t
+//     // that ends with an emission from state k
+//     for(k in 1:kR) // first observation
+//       delta[1, k] = log(pi1[k]) + xbChoice[k][choseChoice[1]] -
+//           log_sum_exp(xbChoice[k][startChoice[1]:endChoice[1]]);
+//
+//     for (t in 2:Tchoice) {
+//       for (j in 1:kR) { // i = current (t)
+//         delta[t, j] = negative_infinity();
+//         for (i in 1:kR) { // i = previous (t-1)
+//           real logp;
+//           logp = delta[t-1, i] + log(theta[i, j]) +
+//             xbChoice[j][choseChoice[t]] -
+//             log_sum_exp(xbChoice[j][startChoice[t]:endChoice[t]]);
+//             if (logp > delta[t, j]) {
+//               bpointer[t, j] = i;
+//               delta[t, j] = logp;
+//             }
+//         }
+//       }
+//     }
+//     logp_zstar = max(delta[Tchoice]);
+//     for (j in 1:kR)
+//       if (delta[Tchoice, j] == logp_zstar)
+//         zstar[Tchoice] = j;
+//     for (t in 1:(Tchoice - 1)) {
+//       zstar[Tchoice - t] = bpointer[Tchoice - t + 1, zstar[Tchoice - t + 1]];
+//     }
+//   }
+// }
