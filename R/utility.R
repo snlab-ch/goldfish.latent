@@ -317,3 +317,9 @@ RescaleCoefs <- function(
   }
   return(beta2)
 }
+
+ChangeKR <- function(chrVec, kR) {
+  whichLine <- grepl("%%", chrVec)
+  chrVec[whichLine] <- gsub("%%kR%%", as.character(kR), chrVec[whichLine])
+  return(chrVec)
+}
