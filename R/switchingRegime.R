@@ -88,7 +88,7 @@ CreateDataSR <- function(
       subModel = "rate",
       preprocessArgs = preprocessArgs,
       progress = progress,
-      envir = envir
+      envir = new.env(parent = envir)
     )
 
     # nEvents <- length(dataProcessedRate$selected)
@@ -114,6 +114,7 @@ CreateDataSR <- function(
       Xrate <- setNames(stat_all_events, namesEffects)
       if (hasIntercept) {
         choseRate <- selected[, 1] + (startRate - 1) * isDependent
+        offsetInt <- log(Trate / (sum(timespan) * mean(n_candidates)))
       } else choseRate <- selected[, 1] + (startRate - 1)
       rm(stat_all_events, n_candidates, sender,
          namesEffects, effectDescription, selected)
@@ -130,7 +131,6 @@ CreateDataSR <- function(
         dataStanRate$Xrate[, -1] <- Xrate[, ] else
           dataStanRate$Xrate <- Xrate[, ]
     }
-
     # table(idxEvents[1, ] == dataStanRate$startRate)
     # table(idxEvents[2, ] == dataStanRate$endRate)
     # chose <- which(expandedDF$selected)
@@ -163,7 +163,7 @@ CreateDataSR <- function(
       subModel = "choice",
       preprocessArgs = preprocessArgs,
       progress = progress,
-      envir = envir
+      envir = new.env(parent = envir)
     )
 
     nEvents <- length(dataProcessedChoice$sender)
