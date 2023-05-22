@@ -2,7 +2,7 @@
 
 export(ComputeLogLikelihood)
 export(CreateData)
-export(CreateDataSR)
+export(CreateDataHMM)
 export(CreateModelCode)
 export(SampleData)
 importFrom(Rdpack,reprompt)

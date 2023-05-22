@@ -1,7 +1,7 @@
-#' Create data for Stan Switching Regime model
+#' Create data for Stan Hidden Markov Model model
 #'
 #' The first step is create the data in the structure expected by the `Stan`
-#' code designed for the DyNAM with Switching Regimes.
+#' code designed for the HMM-DyNAM.
 #' Additional information of the effects used during preprocessing is added to
 #' the return object.
 #'
@@ -22,6 +22,8 @@
 #'   effects formulas and their final name.}
 #'   \item{effectDescription}{an array with detailed and comprehensible
 #'   information of the terms used in the random and fixed effects formulas.}
+#'   \item{scale}{a list with the statistics used for the standardization when
+#'   `scale = TRUE`.}
 #' }
 #' @export
 #'
@@ -34,12 +36,12 @@
 #' callsDependent <- defineDependentEvents(
 #'   events = calls, nodes = actors, defaultNetwork = callNetwork
 #' )
-#' data2stan <- CreateDataSR(
+#' data2stan <- CreateDataHMM(
 #'   rateEffects = callsDependent ~ indeg + outdeg,
 #'   choiceEffects = callsDependent ~ recip + trans
 #' )
 #' }
-CreateDataSR <- function(
+CreateDataHMM <- function(
     rateEffects,
     choiceEffects,
     model = c("DyNAM", "REM"),
@@ -263,7 +265,7 @@ CreateDataSR <- function(
     scaleStats = scaleStats
   ),
   class = "goldfish.latent.data",
-  model = "DyNAMSR",
+  model = "DNHMM",
   subModel = subType
   ))
 }

@@ -59,7 +59,7 @@ model {
     alphas = rep_vector(alpha[2], kR);
     alphas[n] = alpha[1];
     target += dirichlet_lpdf(theta[n] | alphas); // prior for trans probs
-    target += normal_lpdf(betaChoice[n] | 0, 4);
+    target += std_normal_lpdf(betaChoice[n]);
   }
 
   array[kR] vector[kR] log_theta_tr;

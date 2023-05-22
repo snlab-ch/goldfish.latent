@@ -45,20 +45,20 @@ CreateModelCode <- function(dataStan, ...) {
 
   if (model == "DyNAMRE" && subModel == "choice") {
     if (dataStan[["dataStan"]][["Q"]] == 1) {
-      fileModel <- "MCM_RE1.stan"
+      fileModel <- "DNRE1_choice.stan"
     } else stop("Not yet implemented for more than one random effect")
-  } else if (model == "DyNAMSR") {
+  } else if (model == "DNHMM") {
     if (subModel == "both" && dataStan[["dataStan"]][["hasIntercept"]]) {
       # stop("Not yet implemented, use independent submodels")
       # fileModel <- "DyNAMSR_both.stan"
-      fileModel <- "DyNAM_both.stan"
+      fileModel <- "DNHMM_both.stan"
     } else if (subModel == "both") {
       stop("Not yet implemented, use independent submodels")
-      fileModel <- "DyNAMSR_both_ord.stan"
+      fileModel <- "DNHMM_both_ord.stan"
     } else if (subModel == "rate" && dataStan[["dataStan"]][["hasIntercept"]]) {
-      fileModel <- "DyNAMSR_rate.stan"
+      fileModel <- "DNHMM_rate.stan"
     } else if (subModel == "choice") {
-      fileModel <- "DyNAMSR_choice.stan"
+      fileModel <- "DNHMM_choice.stan"
     } else stop("not implemented yet")
   }
 

@@ -14,3 +14,14 @@
 # goldfish.latent 0.0.0.9000
 
 * Added a `NEWS.md` file to track changes to the package.
+
+# goldfish.latent 0.0.2
+
+* `scale` parameter in `CreateData()` allows to standardize variables and
+  keep mean and standard deviation information.
+* Internal function `RescaleCoef()` uses the standardization information to
+  transform parameter values in the original variable scale.
+* HMM-DyNAM includes a new Stan variant that allows to change temporal resolution,
+  for example, the model considers changes the Hidden Markov happening after each
+  day or other time window predefined.
+
