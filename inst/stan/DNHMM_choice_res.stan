@@ -66,10 +66,22 @@ model {
   vector[kR] lp;
   vector[kR] lp_p1;
 
-  array[kR] vector[Nchoice] xbChoice;
-  for (n in 1:kR)
-    xbChoice[n] = Xchoice * betaChoice[n];
+  array[Nres] vector[kR] log_omega;
+  {
+    vector[Nchoice] xbChoice;
+    real acum;
+    for (n in 1:kR) {
+      xbChoice = Xchoice * betaChoice[n];
+      for (t in 1:Nres){
+        acum = 0;
+        for (event in resA[t]:(resA[t + 1] - 1))
+          acum += xbChoice[choseChoice[event]] -
+            log_sum_exp(xbChoice[startChoice[event]:endChoice[event]]);
 
+        log_omega[t][n] = acum;
+      }
+    }
+  }
   // transpose the tpm and take natural log of entries
   for (n_from in 1:kR)
     for (n in 1:kR)
@@ -77,20 +89,12 @@ model {
 
   // forward algorithm implementation
 
-  for(n in 1:kR) { // first observation
-    lp[n] = log(pi1[n]);
-    for (event in resA[1]:(resA[2] - 1))
-      lp[n] += xbChoice[n][choseChoice[event]] -
-        log_sum_exp(xbChoice[n][startChoice[event]:endChoice[event]]);
-  }
+  lp = log(pi1[n]) + log_omega[1]; // first observation
 
   for (t in 2:Nres) { // looping over observations
-    for (n in 1:kR) { // looping over states
-      lp_p1[n] = log_sum_exp(log_theta_tr[n] + lp);
-      for (event in resA[t]:(resA[t + 1] - 1))
-        lp_p1[n] += xbChoice[n][choseChoice[event]] -
-          log_sum_exp(xbChoice[n][startChoice[event]:endChoice[event]]);
-    }
+    for (n in 1:kR) // looping over states
+      lp_p1[n] = log_sum_exp(log_theta_tr[n] + lp) + log_omega[t][n];
+
     lp = lp_p1;
   }
 

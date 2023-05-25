@@ -25,46 +25,26 @@ transformed data {
 }
 parameters {
   array[kR] simplex[kR] theta; // transition probabilities
-
-  real int0;
-  array[kR - 1] real<lower = 0.5> intk;
-
-  array[kR] vector[Pchoice - 1] betaWOInt;
+  array[kR] vector[Pchoice] betaChoice;
 }
 transformed parameters {
-  // array[kR] vector[Pchoice] betaChoice;
-  // for (p in 1:Pchoice)
-  //   for (n in 1:kR)
-  //     betaChoice[n, p] = betaOrd[p, n];
-
-  array[kR] vector[Pchoice] betaChoice;
-  betaChoice[1][1] = int0;
-  for (n in 1:kR) {
-    if (n > 1)  betaChoice[n][1] = betaChoice[n-1][1] + intk[n-1];
-    betaChoice[n][2:Pchoice] = betaWOInt[n];
-  }
-
   simplex[kR] pi1;
   matrix[kR, kR] ta;
-  //array[kR] vector[Trate] logAlpha;
 
   for (j in 1:kR)
     for (i in 1:kR)
       ta[i, j] = theta[i, j];
-
   // compute stationary distribution from transition prob matrix
   pi1 = to_vector((to_row_vector(rep_vector(1.0, kR)) /
     (diag_matrix(rep_vector(1.0, kR)) - ta + rep_matrix(1, kR, kR))));
 }
 model {
   vector[kR] alphas;
-  target += std_normal_lpdf(int0);
-  target += normal_lpdf(intk | 1, 1);
   for (n in 1:kR) {
     alphas = rep_vector(alpha[2], kR);
     alphas[n] = alpha[1];
     target += dirichlet_lpdf(theta[n] | alphas); // prior for trans probs
-    target += std_normal_lpdf(betaWOInt[n]);
+    target += std_normal_lpdf(betaChoice[n]);
   }
 
   array[kR] vector[kR] log_theta_tr;
