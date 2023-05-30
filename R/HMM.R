@@ -343,7 +343,7 @@ HMMPostProcessing <- function(
   idxTheta <- drawsObject$idxTheta
   idxEmission <- drawsObject$idxEmission
   idxBetaChoice <- drawsObject$idxBetaChoice
-  idxBetaRate <- idxBetaChoice$idxBetaRate
+  idxBetaRate <- drawsObject$idxBetaRate
 
   nDraws <- nrow(draws)
 
@@ -357,35 +357,33 @@ HMMPostProcessing <- function(
 
 
   if (subModel %in% c("choice", "both")) {
-    if (type %in% c("both")) {
-      llEventState <- array(0, dim = c(nEvents, nDraws, kRegimes))
+    llEventState <- array(0, dim = c(nEvents, nDraws, kRegimes))
 
-      for (kR in seq_len(kRegimes)) {
-        xb <- tcrossprod(data2Stan$Xchoice, draws[, idxBetaChoice[kR, ]])
+    for (kR in seq_len(kRegimes)) {
+      xb <- tcrossprod(data2Stan$Xchoice, draws[, idxBetaChoice[kR, ]])
 
-        for (event in seq_len(nEvents))
-          llEventState[event, , kR] <-
-            xb[data2Stan$choseChoice[event], ] -
-            colLogSumExps(
-              xb,
-              rows = seq(data2Stan$startChoice[event],
-                         data2Stan$endChoice[event])
-            )
-      }
-
-      if (isRes)
-        llEventState <- array(apply(
-          llEventState,
-          3,
-          \(x) lapply(
-            seq_len(TT),
-            \(y) colSums2(
-              x,
-              rows = seq(data2Stan$resA[y], data2Stan$resA[y + 1] - 1)
-            )
-          ) |> Reduce(rbind, x = _)
-        ), dim = c(TT, nDraws, kRegimes))
+      for (event in seq_len(nEvents))
+        llEventState[event, , kR] <-
+          xb[data2Stan$choseChoice[event], ] -
+          colLogSumExps(
+            xb,
+            rows = seq(data2Stan$startChoice[event],
+                       data2Stan$endChoice[event])
+          )
     }
+
+    if (isRes)
+      llEventState <- array(apply(
+        llEventState,
+        3,
+        \(x) lapply(
+          seq_len(TT),
+          \(y) colSums2(
+            x,
+            rows = seq(data2Stan$resA[y], data2Stan$resA[y + 1] - 1)
+          )
+        ) |> Reduce(rbind, x = _)
+      ), dim = c(TT, nDraws, kRegimes))
 
 
     if (type %in% c("both", "viterbi")) {
