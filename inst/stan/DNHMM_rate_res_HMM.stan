@@ -63,7 +63,8 @@ model {
     alphas = rep_vector(alpha[2], kR);
     alphas[n] = alpha[1];
     target += dirichlet_lpdf(theta[n] | alphas); // prior for trans probs
-    target += std_normal_lpdf(beta[n]);
+    target += normal_lpdf(beta[n][1] | 0, 10);
+    target += std_normal_lpdf(beta[n][2:]);
   }
 
   array[kR] vector[Nrate] xb;

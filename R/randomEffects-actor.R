@@ -417,8 +417,8 @@ ComputeLogLikelihood <- function(
     if (!is.numeric(spec) || length(spec) != 1)
       stop(
         "Please provide an integer number for", dQuote("splitSize"),
-        " parameter. It's not possible to assign a value with current value of",
-        dQuote("spec")
+        " parameter. It's not possible to assign it value with",
+        "the current value of", dQuote("spec")
       )
 
     splitSize <- if (spec == 1) NULL else
@@ -450,7 +450,7 @@ ComputeLogLikelihood <- function(
     if (!is.null(eventsPerCore)) {
       logLik <- parallel::clusterApplyLB(
         cl = cl,
-        seq.int(length(eventsPerCore)),
+        seq_len(length(eventsPerCore)),
         fun = LogLikCondRE,
         draws = draws,
         dataList = dataStan[["dataStan"]],

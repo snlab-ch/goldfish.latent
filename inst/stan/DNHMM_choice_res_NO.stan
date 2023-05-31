@@ -1,8 +1,6 @@
-// DyNAMSR_rate_res_NO.stan
+// DyNAMSR_choice.stan
 // The rate model with intercept model with P covariates
-// offset by the log crude rate
 // Switching regime dynamics with kR states
-// the resolution of the HMM is different that the events
 functions {
   // Normalize
   vector normalize(array[] real x) {
@@ -12,26 +10,20 @@ functions {
 data {
   vector[2] alpha;
   //
-  int Nrate; // number of events * present actors
-  int Trate; // number of events
-  int Prate; // number of covariates
+  int Nchoice; // number of events * present actors
+  int Tchoice; // number of events
+  int Pchoice; // number of covariates
 
-  array[Trate] int<lower = 0, upper = Nrate> choseRate; // position sender
-  matrix[Nrate, Prate] Xrate;
+  array[Tchoice] int<lower = 1, upper = Nchoice> choseChoice; // position receiver
+  matrix[Nchoice, Pchoice] Xchoice;
 
   // the starting and ending index observation for each event
-  array[Trate] int<lower = 1, upper = Nrate> startRate;
-  array[Trate] int<lower = 1, upper = Nrate> endRate;
-
-  //
-  array[Trate] real<lower = 0> timespan;
-  array[Trate] int<lower = 0, upper = 1> isDependent;
-
-  real offsetInt;
+  array[Tchoice] int<lower = 1, upper = Nchoice> startChoice;
+  array[Tchoice] int<lower = 1, upper = Nchoice> endChoice;
 
   // resolution HMM
   int Nres;
-  array[Nres + 1] int<lower = 1, upper = Trate + 1> resA;
+  array[Nres + 1] int<lower = 1, upper = Tchoice + 1> resA;
 }
 transformed data {
   int<lower = 2> K;
@@ -40,7 +32,7 @@ transformed data {
 }
 parameters {
   array[K] simplex[K] theta; // transition probabilities
-  array[K] vector[Prate] beta;
+  array[K] vector[Pchoice] betaChoice;
 }
 transformed parameters {
   simplex[K] pi1;
@@ -49,7 +41,6 @@ transformed parameters {
   for (j in 1:K)
     for (i in 1:K)
       ta[i, j] = theta[i, j];
-
   // compute stationary distribution from transition prob matrix
   pi1 = to_vector((to_row_vector(rep_vector(1.0, K)) /
     (diag_matrix(rep_vector(1.0, K)) - ta + rep_matrix(1, K, K))));
@@ -60,8 +51,7 @@ model {
     alphas = rep_vector(alpha[2], K);
     alphas[n] = alpha[1];
     target += dirichlet_lpdf(theta[n] | alphas); // prior for trans probs
-    target += normal_lpdf(beta[n][1] | 0, 10);
-    target += std_normal_lpdf(beta[n][2:]);
+    target += std_normal_lpdf(betaChoice[n]);
   }
 
   array[K] vector[K] log_theta_tr;
@@ -70,21 +60,21 @@ model {
 
   array[T] vector[K] log_omega;
   {
-    vector[Nrate] xb;
+    vector[Nchoice] xbChoice;
     real acum;
     for (n in 1:K) {
-      xb = Xrate * beta[n] + offsetInt;
+      xbChoice = Xchoice * betaChoice[n];
       for (t in 1:Nres) {
         acum = 0;
         for (event in resA[t]:(resA[t + 1] - 1))
-          acum += (isDependent[event]? xb[choseRate[event]] : 0) -
-            timespan[event] *
-            exp(log_sum_exp(xb[startRate[event]:endRate[event]]));
+          acum += xbChoice[choseChoice[event]] -
+        log_sum_exp(xbChoice[startChoice[event]:endChoice[event]]);
 
         log_omega[t, n] = acum;
       }
     }
   }
+
   // transpose the tpm and take natural log of entries
   for (n_from in 1:K)
     for (n in 1:K)
@@ -111,16 +101,15 @@ generated quantities {
   {
   // compute log likelihood
   array[K] vector[T] log_omega;
-  vector[Nrate] xb;
+  vector[Nchoice] xbChoice;
   real acum;
   for (n in 1:K) {
-    xb = Xrate * beta[n] + offsetInt;
-    for (t in 1:T) {
+    xbChoice = Xchoice * betaChoice[n];
+    for (t in 1:Nres) {
       acum = 0;
       for (event in resA[t]:(resA[t + 1] - 1))
-        acum += (isDependent[event]? xb[choseRate[event]] : 0) -
-          timespan[event] *
-          exp(log_sum_exp(xb[startRate[event]:endRate[event]]));
+        acum += xbChoice[choseChoice[event]] -
+          log_sum_exp(xbChoice[startChoice[event]:endChoice[event]]);
 
       log_omega[n, t] = acum;
     }
@@ -199,7 +188,7 @@ generated quantities {
         for (i in 1:K) { // i = next (t)
           accumulator[i] = logbeta[i, t] + log(ta[j, i]) + log_omega[i, t];
         }
-        logbeta[j, t - 1] = log_sum_exp(accumulator);
+        logbeta[j, t-1] = log_sum_exp(accumulator);
       }
     }
 
@@ -208,8 +197,9 @@ generated quantities {
     }
 
     for(t in 1:T) {
-      loggamma[, t] = to_array_1d(to_vector(p_alpha[, t])
-                                  .* to_vector(p_beta[, t]));
+      loggamma[, t] = to_array_1d(
+        to_vector(p_alpha[, t]) .* to_vector(p_beta[, t])
+      );
     }
 
     for(t in 1:T) {

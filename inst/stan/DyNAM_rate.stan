@@ -24,7 +24,8 @@ parameters {
 }
 model {
   // priors
-  target += normal_lpdf(beta| 0, 4);
+  target += normal_lpdf(beta[1] | 0, 4);
+  target += std_normal_lpdf(beta[2:]);
 
   // helper for likelihood
   {
@@ -33,7 +34,7 @@ model {
 
     for(t in 1:Trate) {
       if (timespan[t] > 0)
-        target += isDependent[t] * xb[choseRate[t]] -
+        target += (isDependent[t] ? xb[choseRate[t]] : 0) -
           timespan[t] * exp(log_sum_exp(xb[startRate[t]:endRate[t]]));
     }
   }
