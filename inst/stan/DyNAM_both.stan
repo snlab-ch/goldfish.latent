@@ -1,5 +1,7 @@
-// DyNAM_rate.stan
-// The rate model with intercept model with P covariates
+// DyNAM_both.stan
+// The rate and choice sub-models with intercept model with P covariates
+// covariates are standarized and
+// the log crude rate is used as offset for the intercept
 //
 data {
   //
@@ -18,6 +20,7 @@ data {
   array[Trate] real<lower = 0> timespan;
   array[Trate] int<lower = 0, upper = 1> isDependent;
 
+  real offsetInt;
   //
   int Nchoice; // number of events * present actors
   int Tchoice; // number of events
@@ -36,25 +39,32 @@ parameters {
 }
 model {
   // priors
-  target += normal_lpdf(betaRate[1] | -10, 10);
-  target += normal_lpdf(betaRate[2:Prate] | 0, 4);
-  target += normal_lpdf(betaChoice | 0, 4);
+  target += normal_lpdf(betaRate[1] | 0, 5);
+  target += std_normal_lpdf(betaRate[2 : ]);
+  target += std_normal_lpdf(betaChoice);
 
   // helper for likelihood
+  vector[Trate] logLik;
   {
     vector[Nrate] xbRate;
-    xbRate = Xrate * betaRate;
+    xbRate = Xrate * betaRate + offsetInt;
 
     vector[Nchoice] xbChoice;
     xbChoice = Xchoice * betaChoice;
 
+    int tChoice = 1;
+    for (t in 1:Trate) {
+      logLik[t] = -timespan[t] *
+        exp(log_sum_exp(xbRate[startRate[t]:endRate[t]]));
 
-    for(t in 1:Trate)
-        target += isDependent[t] * xbRate[choseRate[t]] -
-          timespan[t] * exp(log_sum_exp(xbRate[startRate[t]:endRate[t]]));
+      if (isDependent[t]) {
+        logLik[t] += xbRate[choseRate[t]] +
+          xbChoice[choseChoice[tChoice]] -
+          log_sum_exp(xbChoice[startChoice[tChoice]:endChoice[tChoice]]);
 
-    for (t in 1:Tchoice)
-      target += xbChoice[choseChoice[t]] -
-          log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
+        tChoice += 1;
+      }
+    }
   }
+  target += logLik;
 }
