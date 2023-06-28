@@ -2,9 +2,22 @@
 % Please edit documentation in R/utility.R
 \name{CreateModelCode}
 \alias{CreateModelCode}
+\alias{CreateModelCode.default}
+\alias{CreateModelCode.DNRE}
 \title{Create a Stan code file}
 \usage{
 CreateModelCode(dataStan, ...)
+
+\method{CreateModelCode}{default}(dataStan, ...)
+
+\method{CreateModelCode}{DNRE}(
+  dataStan,
+  subModel = attr(dataStan, "subModel"),
+  prior = c("normal", "t-student"),
+  priorRE = c("default", "gamma", "invWishart", "LKJ"),
+  generateQuantities = FALSE,
+  ...
+)
 }
 \arguments{
 \item{dataStan}{a \code{list} output of a \code{\link[=CreateData]{CreateData()}} call.}

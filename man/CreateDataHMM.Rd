@@ -8,7 +8,7 @@ CreateDataHMM(
   rateEffects,
   choiceEffects,
   model = c("DyNAM", "REM"),
-  kRegimes = 3,
+  kStates = 3,
   supportConstraint = NULL,
   preprocessArgs = NULL,
   scale = FALSE,
@@ -25,11 +25,16 @@ CreateDataHMM(
 on the code would allow to use \code{"REM"} model too.}
 
 \item{supportConstraint}{a \code{formula} with only an effect that gives the
-information of the alters available to received an event at each moment
-of time. The left hand side of the formula is left empty.
-It usually will correspond to a call of the \code{tie(network)} where \code{network}
-is a binary adjacency matrix where the value 1 indicated that actor $j$ is
-available to receive an event from actor $i$.
+information of the restricted set to consider.
+In the case of the \code{"choice"} sub-model, it corresponds to the choice set
+available to received an event at each moment of time.
+In the case of the \code{"rate"} sub-model, it corresponds to the competing set
+available to send an event at each moment of time.
+In the case of the \code{"REM"} model, it corresponds to the set of dyads
+available to create an event at each moment of time.
+The left hand side of the formula is left empty.
+The effect should be coded in such a way that value 1 indicated
+the availability and 0 the absence.
 In the case that some actors left or join the process at any point of time is
 better to use the \code{present} variable in the node data frame linking to it the
 time varying changes of composition of the actors set.}

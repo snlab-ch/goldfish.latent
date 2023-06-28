@@ -30,11 +30,16 @@
 #' on the code would allow to use `"REM"` model too.
 #' @param subModel Current version only support `"choice"` sub-model.
 #' @param supportConstraint a `formula` with only an effect that gives the
-#' information of the alters available to received an event at each moment
-#' of time. The left hand side of the formula is left empty.
-#' It usually will correspond to a call of the `tie(network)` where `network`
-#' is a binary adjacency matrix where the value 1 indicated that actor $j$ is
-#' available to receive an event from actor $i$.
+#' information of the restricted set to consider.
+#' In the case of the `"choice"` sub-model, it corresponds to the choice set
+#' available to received an event at each moment of time.
+#' In the case of the `"rate"` sub-model, it corresponds to the competing set
+#' available to send an event at each moment of time.
+#' In the case of the `"REM"` model, it corresponds to the set of dyads
+#' available to create an event at each moment of time.
+#' The left hand side of the formula is left empty.
+#' The effect should be coded in such a way that value 1 indicated
+#' the availability and 0 the absence.
 #' In the case that some actors left or join the process at any point of time is
 #' better to use the `present` variable in the node data frame linking to it the
 #' time varying changes of composition of the actors set.
@@ -44,7 +49,8 @@
 #' @param progress logical argument passed to [goldfish::GatherPreprocessing()]
 #' to show the progress of the preprocessing of the events sequence.
 #'
-#' @return a list with the following components.
+#' @return an object of class `"goldfish.latent.data"` that contains
+#' a list with the following components.
 #' \describe{
 #'   \item{dataStan}{a list with the information necessary to run a HMC using
 #'   Stan.}
@@ -95,12 +101,6 @@ CreateData <- function(
     is.null(supportConstraint) ||
       inherits(supportConstraint, "formula")
   )
-
-  if (!(model == "DyNAM" && subModel == "choice"))
-    stop("Model and subModel combination not available yet, WIP")
-
-  if (length(randomEffects) != 1)
-    stop("The current implementation only consider one random effect.")
 
   # setting initial values of some arguments
   if (is.null(progress)) progress <- FALSE
@@ -228,28 +228,53 @@ CreateData <- function(
     as.formula(paste("~ ", formulaDyNAMRE, " + 0")),
     data = expandedDF
   )
+  Zmat <- expandedDF[,
+                     namesEffects[match(reDyNAM, termsDyNAM)],
+                     drop = FALSE
+  ] |>
+    as.matrix()
+
+  dataStan = list(
+    T = nEvents,
+    N = nTotal,
+    P = ncol(Xmat),
+    Q = length(randomEffects),
+    A = nrow(sendersIx),
+    start = idxEvents[1, ],
+    end = idxEvents[2, ],
+    sender = expandedDF[, "senderIx"],
+    X = Xmat,
+    Z = Zmat,
+    chose = which(expandedDF[, "selected"]),
+    event = expandedDF[, "event"],
+    selected = expandedDF[, "selected"]
+  )
+
+  suffix <- switch(subModel,
+    choice = c("choice", "Choice"),
+    rate = c("rate", "Rate"),
+    choice_coordination = c("choice", "Choice")
+  )
+
+  namesStan <- names(dataStan)
+  changeName <- grep("^[TNPQXZ]$", namesStan)
+  namesStan[changeName] <- paste0(namesStan[changeName], suffix[1])
+
+  changeName <- grep(
+    "(start)|(end)|(sender)|(chose)|(event)|(selected)",
+    namesStan
+  )
+  namesStan[changeName] <- paste0(namesStan[changeName], suffix[2])
+
+  names(dataStan) <- namesStan
 
   return(structure(list(
-    dataStan = list(
-      T = nEvents,
-      N = nTotal,
-      P = ncol(Xmat),
-      Q = length(randomEffects),
-      A = nrow(sendersIx),
-      start = idxEvents[1, ],
-      end = idxEvents[2, ],
-      sender = expandedDF[, "senderIx"],
-      X = Xmat,
-      Z = expandedDF[, namesEffects[match(reDyNAM, termsDyNAM)]],
-      chose = which(expandedDF[, "selected"]),
-      event = expandedDF[, "event"],
-      selected = expandedDF[, "selected"]
-    ),
+    dataStan = dataStan,
     sendersIx = sendersIx,
     namesEffects = namesEffects,
     effectDescription = effectDescription
   ),
-  class = "goldfish.latent.data",
+  class = c("DNRE", "goldfish.latent.data"),
   model = "DyNAMRE",
   subModel = "choice"
   ))

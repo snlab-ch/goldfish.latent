@@ -7,8 +7,9 @@
 HMMDraws2LS(
   data2Stan,
   cmdstanSamples,
-  kRegimes = data2Stan$dataStan$kR,
-  type = c("2label.switching", "matrix")
+  kStates = data2Stan$dataStan$kS,
+  type = c("2label.switching", "draws_matrix", "draws_array", "draws_df"),
+  rescale = FALSE
 )
 }
 \arguments{
@@ -18,7 +19,7 @@ to \code{\link[=CreateDataHMM]{CreateDataHMM()}}.}
 \item{cmdstanSamples}{a object of class \code{"CmdStanMCMC"} with the posterior
 samples of a HMM from the \code{data2Stan}.}
 
-\item{kRegimes}{an integer with the number of states used to get samples
+\item{kStates}{an integer with the number of states used to get samples
 from the posterior distribution in \code{cmdstanSamples}.}
 
 \item{type}{a character specifying weather the draws are shaped for the

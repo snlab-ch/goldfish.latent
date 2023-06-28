@@ -5,21 +5,19 @@
 \title{Post process MCMC samples from a HMM}
 \usage{
 HMMPostProcessing(
-  data2Stan,
+  dataStan,
   cmdstanSamples,
-  kRegimes = data2Stan$dataStan$kR,
+  kStates = dataStan$dataStan$kS,
   type = c("both", "viterbi", "smoothProbs"),
-  smoothProbsSt = c("joint", "marginal", "none")
+  smoothProbsSt = c("joint", "marginal", "none"),
+  cl = NULL
 )
 }
 \arguments{
-\item{data2Stan}{a object of class \code{"goldfish.latent.data"} outcome of a call
-to \code{\link[=CreateDataHMM]{CreateDataHMM()}}.}
-
 \item{cmdstanSamples}{a object of class \code{"CmdStanMCMC"} with the posterior
 samples of a HMM from the \code{data2Stan}.}
 
-\item{kRegimes}{an integer with the number of states used to get samples
+\item{kStates}{an integer with the number of states used to get samples
 from the posterior distribution in \code{cmdstanSamples}.}
 
 \item{type}{a character specifying which algorithm to use for the post
@@ -29,6 +27,9 @@ processing of the posterior distribution samples.}
 are drawn either using the smoothed probabilities \code{"marginal"} or
 conditioning of the next sample state \code{"joint"}.
 Only used when \code{type = "both"} or \code{type = "smoothProbs"}.}
+
+\item{data2Stan}{a object of class \code{"goldfish.latent.data"} outcome of a call
+to \code{\link[=CreateDataHMM]{CreateDataHMM()}}.}
 }
 \value{
 a list with the most probable path when Viterbi algorithm is used

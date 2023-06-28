@@ -33,7 +33,7 @@ Imports:
     rlang,
     statmod
 Remotes: 
-    github::snlab-ch/goldfish@feature_simulation,
+    github::snlab-ch/goldfish@c34807ef2b0eb2d5c733d556a579c9b51b2e7258,
     stan-dev/cmdstanr,
     stan-dev/posterior,
     github::stan-dev/bayesplot

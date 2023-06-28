@@ -18,7 +18,7 @@
 #' It contains the code with the specification of data structure, priors,
 #' and log-likelihood of the given model.
 #'
-#' @export
+#' @export CreateModelCode
 #'
 #' @examples
 #' \donttest{
@@ -38,6 +38,12 @@
 #' stanCode <- CreateModelCode(data2stan)
 #' }
 CreateModelCode <- function(dataStan, ...) {
+  UseMethod("CreateModelCode", dataStan)
+}
+
+#' @rdname CreateModelCode
+#' @export
+CreateModelCode.default <- function(dataStan, ...) {
   stopifnot(inherits(dataStan, "goldfish.latent.data"))
 
   model <- attr(dataStan, "model")
@@ -78,6 +84,215 @@ CreateModelCode <- function(dataStan, ...) {
   return(model)
 }
 
+
+#' @rdname CreateModelCode
+#' @export
+CreateModelCode.DNRE <- function(
+    dataStan,
+    subModel = attr(dataStan, "subModel"),
+    prior = c("normal", "t-student"),
+    priorRE = c("default", "gamma", "invWishart", "LKJ"),
+    generateQuantities = FALSE,
+    ...
+) {
+  prior <- match.arg(prior)
+  priorRE <- match.arg(priorRE)
+  subModel <- match.arg(subModel, c("both", "choice", "rate"))
+
+  Q <- ifelse(
+    !is.null(dataStan[["stan"]][["Qrate"]]),
+    dataStan[["stan"]][["Qrate"]],
+    0L
+  ) +
+    ifelse(
+      !is.null(dataStan[["stan"]][["Qchoice"]]),
+      dataStan[["stan"]][["Qchoice"]],
+      0L
+    )
+
+  typeQ <- ifelse(Q > 1, "Qm", "Q1")
+
+  parmsFE <- do.call(
+    utils::getS3method("ReadParms", subModel),
+    list(x = prior)
+  )
+  parmsRE <- do.call(
+    utils::getS3method("ReadParms", paste0(subModel, "RE", typeQ)),
+    list(x = prior)
+  )
+  stanCode <- c(
+    "data {",
+    do.call(
+      utils::getS3method("ReadData", subModel),
+      list(x = subModel)
+      ),
+    do.call(
+      utils::getS3method("ReadData", paste0(subModel, "RE")),
+      list(x = subModel)
+    ),
+    "}\nparameters {",
+    parmsFE[["parms"]],
+    parmsRE[["parms"]],
+    "}",
+    parmsRE[["transParms"]],
+    "model {\n  //priors",
+    parmsFE[["prior"]],
+    parmsRE[["prior"]],
+    "  // loglikelihood",
+    parmsRE[["likelihood"]],
+    "}",
+    if (generateQuantities) parmsRE[["gq"]]
+  )
+
+  cmdstanr::write_stan_file(code = stanCode)
+}
+
+ReadData <- function(x, ...) {
+  UseMethod("ReadData", x)
+}
+
+ReadData.rate <- function(x) {
+  readLines(
+    system.file("stan", "DN_rt_data.stan", package = "goldfish.latent")
+  )
+}
+
+ReadData.choice <- function(x) {
+  readLines(
+    system.file("stan", "DN_ch_data.stan", package = "goldfish.latent")
+  )
+}
+
+ReadData.both <- function(x) {
+  c(ReadData.rate(x), ReadData.choice(x))
+}
+
+ReadData.rateRE <- function(x, includeA = TRUE) {
+  c(
+    if (includeA) "  int A; // number of senders",
+    readLines(
+      system.file("stan", "DNRE_rt_data.stan", package = "goldfish.latent")
+    )
+  )
+}
+
+ReadData.choiceRE <- function(x, includeA = TRUE) {
+  c(
+    if (includeA) "  int A; // number of senders",
+    readLines(
+      system.file("stan", "DNRE_ch_data.stan", package = "goldfish.latent")
+    )
+  )
+}
+
+ReadData.bothRE <- function(x) {
+  c(ReadData.rateRE(x), ReadData.choiceRE(x, includeA = FALSE))
+}
+
+ReadParms <- function(x, ...) {
+  UseMethod("ReadParms", x)
+}
+
+ReadParms.rate <- function(x) {
+  list(
+    parms = "  vector[Prate] betaRate;",
+    prior = switch(
+      x,
+      "normal" = c(
+        "  target += normal_lpdf(betaRate[1] | 0, 10);",
+        "  target += std_normal_lpdf(betaRate[2: ]);"
+      ),
+      "t-student" = c(
+        "  target += student_t_lpdf(betaRate[1] | 3, 0, 10);",
+        "  target += student_t_lpdf(betaRate[2: ] | 3, 0, 1);"
+      )
+    )
+  )
+}
+
+ReadParms.choice <- function(x) {
+  list(
+    parms = "  vector[Pchoice] betaChoice;",
+    prior = switch(
+      x,
+      "normal" = "  target += std_normal_lpdf(betaChoice);",
+      "t-student" = "  target += student_t_lpdf(betaChoice | 3, 0, 1);"
+    )
+  )
+}
+
+ReadParms.both <- function(x) {
+  rate <- ReadParms.rate(x)
+  choice <- ReadParms.choice(x)
+  list(
+    parms = c(rate[["parms"]], choice[["parms"]]),
+    prior = c(rate[["prior"]], choice[["prior"]])
+  )
+}
+
+ReadParms.rateREQ1 <- function(x) {
+  codeStanC <- readLines(
+    system.file("stan", "DNRE_parmsQ1.stan", package = "goldfish.latent")
+  )
+  positionsC <- c(
+    grep(
+      "(parms)|(prior)|(transformedParms)",
+      codeStanC
+    ),
+    length(codeStan) + 1L
+  )
+  codeStan <- readLines(
+    system.file("stan", "DNRE_rt_parmsQ1.stan", package = "goldfish.latent")
+  )
+  positions <- c(
+    grep(
+      "(loglikelihood)|(generateQ)",
+      codeStan
+    ),
+    length(codeStan) + 1L
+  )
+  list(
+    parms = codeStanC[seq.int(positionsC[1] + 1, positionsC[2] - 1)],
+    transParms = codeStanC[seq.int(positionsC[2] + 1, positionsC[3] - 1)],
+    prior = codeStanC[seq.int(positionsC[3] + 1, positionsC[4] - 1)],
+    likelihood = codeStan[seq.int(positions[1] + 1, positions[2] - 1)],
+    gQ = codeStan[seq.int(positions[2] + 1, positions[3] - 1)]
+  )
+}
+
+ReadParms.choiceREQ1 <- function(x) {
+  codeStanC <- readLines(
+    system.file("stan", "DNRE_parmsQ1.stan", package = "goldfish.latent")
+  )
+  positionsC <- c(
+    grep(
+      "(parms)|(prior)|(transformedParms)",
+      codeStanC
+    ),
+    length(codeStan) + 1L
+  )
+  codeStan <- readLines(
+    system.file("stan", "DNRE_ch_parmsQ1.stan", package = "goldfish.latent")
+  )
+  positions <- c(
+    grep(
+      "(loglikelihood)|(generateQ)",
+      codeStan
+    ),
+    length(codeStan) + 1L
+  )
+  list(
+    parms = codeStanC[seq.int(positionsC[1] + 1, positionsC[2] - 1)],
+    transParms = codeStanC[seq.int(positionsC[2] + 1, positionsC[3] - 1)],
+    prior = codeStanC[seq.int(positionsC[3] + 1, positionsC[4] - 1)],
+    likelihood = codeStan[seq.int(positions[1] + 1, positions[2] - 1)],
+    gQ = codeStan[seq.int(positions[2] + 1, positions[3] - 1)]
+  )
+}
+
+ReadParms.bothREQ1 <- function(x) {
+  stop("not there yet")
+}
 
 #' sample preprocessed data
 #'
