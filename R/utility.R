@@ -116,30 +116,25 @@ CreateModelCode.DNRE <- function(
     utils::getS3method("ReadParms", subModel),
     list(x = prior)
   )
-  parmsRE <- do.call(
-    utils::getS3method("ReadParms", paste0(subModel, "RE", typeQ)),
-    list(x = prior)
+  parmsRE <- c(
+    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
+    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
   )
   stanCode <- c(
     "data {",
-    do.call(
-      utils::getS3method("ReadData", subModel),
-      list(x = subModel)
-      ),
-    do.call(
-      utils::getS3method("ReadData", paste0(subModel, "RE")),
-      list(x = subModel)
-    ),
+    ReadStanChunkType(subModel, "DN", "data"),
+    "  int A; // number of senders",
+    ReadStanChunkType(subModel, "DNRE", "data"),
     "}\nparameters {",
-    parmsFE[["parms"]],
-    parmsRE[["parms"]],
+    parmsFE[["pm"]],
+    parmsRE[["pm"]],
     "}",
-    parmsRE[["transParms"]],
+    parmsRE[["tp"]],
     "model {\n  //priors",
-    parmsFE[["prior"]],
-    parmsRE[["prior"]],
+    parmsFE[["pr"]],
+    parmsRE[["pr"]],
     "  // loglikelihood",
-    parmsRE[["likelihood"]],
+    parmsRE[["ll"]],
     "}",
     if (generateQuantities) parmsRE[["gq"]]
   )
@@ -147,46 +142,44 @@ CreateModelCode.DNRE <- function(
   cmdstanr::write_stan_file(code = stanCode)
 }
 
-ReadData <- function(x, ...) {
-  UseMethod("ReadData", x)
+ReadStanChunk <- function(prefix, type, suffix, isType = TRUE) {
+  fileChunk <- paste0(
+    prefix, "_", if (isType) paste0(type, "_"), suffix, ".stan"
+  )
+  readLines(system.file("stan", fileChunk, package = "goldfish.latent"))
 }
 
-ReadData.rate <- function(x) {
-  readLines(
-    system.file("stan", "DN_rt_data.stan", package = "goldfish.latent")
+ReadStanChunkType <- function(
+    x, prefix, suffix, isCommon = FALSE
+) {
+  switch(
+    (!isCommon) * match(x, c("rate", "choice", "both")) + 1,
+    ReadStanChunk(prefix, "", suffix, isType = FALSE),
+    ReadStanChunk(prefix, "rt", suffix),
+    ReadStanChunk(prefix, "ch", suffix),
+    c(
+      ReadStanChunkType("rate", prefix, suffix, isCommon),
+      ReadStanChunkType("choice",  prefix, suffix, isCommon)
+    ),
+    stop("not recognize submodel")
   )
 }
 
-ReadData.choice <- function(x) {
-  readLines(
-    system.file("stan", "DN_ch_data.stan", package = "goldfish.latent")
-  )
-}
-
-ReadData.both <- function(x) {
-  c(ReadData.rate(x), ReadData.choice(x))
-}
-
-ReadData.rateRE <- function(x, includeA = TRUE) {
-  c(
-    if (includeA) "  int A; // number of senders",
-    readLines(
-      system.file("stan", "DNRE_rt_data.stan", package = "goldfish.latent")
+SplitJoinChunk <- function(
+    x, prefix, suffix, isCommon = FALSE
+) {
+  codeLines <- ReadStanChunkType(x, prefix, suffix, isCommon)
+  chunksTitles <- grep("^\\h*// (\\w+)$", codeLines)
+  codeOrg <- list()
+  positions <- c(chunksTitles, length(codeLines))
+  for (ch in seq_along(chunksTitles)) {
+    title <- gsub("^\\h*// (\\w+)$", "\\1", codeLines[positions[ch]])
+    codeOrg[[title]] <- c(
+      codeOrg[[title]],
+      codeLines[seq.int(positions[ch] + 1, positions[ch + 1] - 1)]
     )
-  )
-}
-
-ReadData.choiceRE <- function(x, includeA = TRUE) {
-  c(
-    if (includeA) "  int A; // number of senders",
-    readLines(
-      system.file("stan", "DNRE_ch_data.stan", package = "goldfish.latent")
-    )
-  )
-}
-
-ReadData.bothRE <- function(x) {
-  c(ReadData.rateRE(x), ReadData.choiceRE(x, includeA = FALSE))
+  }
+  return(codeOrg)
 }
 
 ReadParms <- function(x, ...) {
@@ -230,69 +223,7 @@ ReadParms.both <- function(x) {
   )
 }
 
-ReadParms.rateREQ1 <- function(x) {
-  codeStanC <- readLines(
-    system.file("stan", "DNRE_parmsQ1.stan", package = "goldfish.latent")
-  )
-  positionsC <- c(
-    grep(
-      "(parms)|(prior)|(transformedParms)",
-      codeStanC
-    ),
-    length(codeStan) + 1L
-  )
-  codeStan <- readLines(
-    system.file("stan", "DNRE_rt_parmsQ1.stan", package = "goldfish.latent")
-  )
-  positions <- c(
-    grep(
-      "(loglikelihood)|(generateQ)",
-      codeStan
-    ),
-    length(codeStan) + 1L
-  )
-  list(
-    parms = codeStanC[seq.int(positionsC[1] + 1, positionsC[2] - 1)],
-    transParms = codeStanC[seq.int(positionsC[2] + 1, positionsC[3] - 1)],
-    prior = codeStanC[seq.int(positionsC[3] + 1, positionsC[4] - 1)],
-    likelihood = codeStan[seq.int(positions[1] + 1, positions[2] - 1)],
-    gQ = codeStan[seq.int(positions[2] + 1, positions[3] - 1)]
-  )
-}
 
-ReadParms.choiceREQ1 <- function(x) {
-  codeStanC <- readLines(
-    system.file("stan", "DNRE_parmsQ1.stan", package = "goldfish.latent")
-  )
-  positionsC <- c(
-    grep(
-      "(parms)|(prior)|(transformedParms)",
-      codeStanC
-    ),
-    length(codeStan) + 1L
-  )
-  codeStan <- readLines(
-    system.file("stan", "DNRE_ch_parmsQ1.stan", package = "goldfish.latent")
-  )
-  positions <- c(
-    grep(
-      "(loglikelihood)|(generateQ)",
-      codeStan
-    ),
-    length(codeStan) + 1L
-  )
-  list(
-    parms = codeStanC[seq.int(positionsC[1] + 1, positionsC[2] - 1)],
-    transParms = codeStanC[seq.int(positionsC[2] + 1, positionsC[3] - 1)],
-    prior = codeStanC[seq.int(positionsC[3] + 1, positionsC[4] - 1)],
-    likelihood = codeStan[seq.int(positions[1] + 1, positions[2] - 1)],
-    gQ = codeStan[seq.int(positions[2] + 1, positions[3] - 1)]
-  )
-}
-
-ReadParms.bothREQ1 <- function(x) {
-  stop("not there yet")
-}
 
 #' sample preprocessed data
 #'
