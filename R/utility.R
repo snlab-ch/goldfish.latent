@@ -165,6 +165,16 @@ ReadStanChunkType <- function(
   )
 }
 
+ReadStanChunkLL <- function(x, prefix) {
+  suffix <- "ll"
+  switch(
+    match(x, c("rate", "choice", "both")),
+    ReadStanChunk(prefix, "rt", suffix),
+    ReadStanChunk(prefix, "ch", suffix),
+    ReadStanChunk(prefix, "bt", suffix),
+    stop("not recognize submodel")
+  )
+}
 SplitJoinChunk <- function(
     x, prefix, suffix, isCommon = FALSE
 ) {

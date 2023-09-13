@@ -1,4 +1,4 @@
-// ll
+// loglikelihood
   vector[Nchoice] xbChoice; 
   {
     vector[A] gamma;
@@ -8,10 +8,10 @@
       to_vector(col(Zchoice, 1)) .* gamma[senderChoice]; 
   }
 
-  for (t in 1:Tchoice)
+  for(t in 1:Tchoice)
     target  += xbChoice[choseChoice[t]] -
       log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
-// gq
+// generateQ
 generated quantities {
   vector[Tchoice] logLik; 
   {
@@ -22,7 +22,7 @@ generated quantities {
     xbChoice = Xchoice * betaChoice +
       to_vector(col(Zchoice, 1)) .* gamma[senderChoice]; 
 
-    for (t in 1:Tchoice)
+    for(t in 1:Tchoice)
       logLik[t] = xbChoice[choseChoice[t]] -
         log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
   }
