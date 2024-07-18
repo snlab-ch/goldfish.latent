@@ -3,7 +3,7 @@
 // Switching regime dynamics with kR states
 data {
   int<lower = 2> kR;  // number of states
-  real offsetInt; // prior for rate of transition between states
+  real offsetInt; // kappa for Blackwell Integrated CHMM
   //
   int Nchoice; // number of events * actors in the choice set
   int Tchoice; // number of events
@@ -58,7 +58,9 @@ model {
   }
 
   array[kR] vector[kR] log_theta_tr;
-  real sojourn;
+  matrix[kR, kR] theta_exp;
+  // real sojourn;
+  // real kappa;
   vector[kR] lp;
   vector[kR] lp_p1;
 
@@ -74,18 +76,14 @@ model {
 
   for (t in 2:Tchoice) { // looping over observations
     // compute log probabilities of transition given time in state
+
+    theta_exp = matrix_exp(timespan[t] * ta);
     for (n in 1:kR) {
       // -\lambda_i * \Delta_t
-      sojourn = timespan[t] * ta[n, n];
+      // sojourn = timespan[t] * ta[n, n];
       for (n_from in 1:kR) {
         // transpose the tpm and take natural log of entries
-        if (n == n_from) {
-          // the probability of staying in the same state: 
-          // 1 - \lambda_i * exp(-\lambda_i * \Delta_t)
-          log_theta_tr[n, n_from] = log(1 + ta[n, n] * exp(sojourn));
-        } else {
-          log_theta_tr[n, n_from] = log(ta[n_from, n]) + sojourn;
-        }
+        log_theta_tr[n, n_from] = log(theta_exp[n_from, n]);
       }
     }
 
