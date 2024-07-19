@@ -330,7 +330,7 @@ HMMPostProcessing <- function(
     inherits(cmdstanSamples, "CmdStanMCMC"),
     inherits(dataStan, "goldfish.latent.data"),
     is.numeric(kStates) && length(kStates) == 1 && kStates >= 2,
-    model == "DNHMM"
+    model %in% c("DNHMM", "DNCHMM")
   )
 
   subModel <- attr(dataStan, "subModel")
@@ -345,22 +345,25 @@ HMMPostProcessing <- function(
   dataStan <- dataStan$dataStan
 
   if (is.null(cl)) {
-    output <- HMMPPperDraws(
-      chainIter = NULL,
-      drawsObject = drawsObject,
-      dataStan = dataStan,
-      model = model,
-      subModel = subModel,
-      kStates = kStates,
-      type = type,
-      smoothProbsSt = smoothProbsSt
+    output <- do.call(
+      ifelse(model == "DNHMM", "HMMPPperDraws", "CHMMPPperDraws"),
+      args = list(
+        chainIter = NULL,
+        drawsObject = drawsObject,
+        dataStan = dataStan,
+        model = model,
+        subModel = subModel,
+        kStates = kStates,
+        type = type,
+        smoothProbsSt = smoothProbsSt
+      )
     )
   } else {
     ignore <- parallel::clusterEvalQ(cl, {library(matrixStats);NULL})
     output <- parallel::clusterApplyLB(
       cl = cl,
       seq_len(cmdstanSamples$num_chains()),
-      fun = HMMPPperDraws,
+      fun = if (model == "DNHMM")  HMMPPperDraws else CHMMPPperDraws,
       drawsObject = drawsObject,
       dataStan = dataStan,
       model = model,
@@ -622,6 +625,7 @@ HMMPPperDraws <- function(
   return(output)
 }
 
+#' @importFrom expm expm
 CHMMPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
     kStates, type, smoothProbsSt
@@ -729,6 +733,51 @@ CHMMPPperDraws <- function(
       ) |> (\(x) Reduce(rbind, x = x))()
     ), dim = c(TT, nDraws, kStates))
 
+
+  # compute transition probabilities
+  transProbs <- array(0, dim = c(TT, kStates, kStates, nDraws))
+  for (tt in seq(2, TT)) {
+    if (tt %% 100 == 0) cat("Transition Probabilities: ", tt, " of ", TT, "\n")
+    # for (iter in seq_len(nDraws)) {
+    #   transProbs[tt, iter, , ] <- expm::expm(
+    #     matrix(
+    #       draws[iter, idxTheta],
+    #       nrow = kStates
+    #     ) * dataStan$timespan[tt]
+    #   )
+    # }
+
+    system.time(
+    transProbs[tt, , , ] <- vapply(
+      seq_len(nDraws),
+      \(x){
+        expm::expm(
+          matrix(
+            draws[x, idxTheta],
+            nrow = kStates
+          ) * dataStan$timespan[tt]
+        )
+      },
+      matrix(0, nrow = kStates, ncol = kStates)
+    )
+    )
+    system.time(
+    check2 <- apply(
+      draws[, idxTheta] * dataStan$timespan[tt],
+      1,
+      \(x){
+        expm::expm(
+          matrix(
+            x,
+            nrow = kStates, ncol = kStates
+          )
+        )
+      }
+    )
+    )
+  }
+
+
   if (type %in% c("both", "viterbi")) {
     # back-pointer to the most likely previous state on the most probable path
     bpointer <- array(0, dim = c(TT, kStates, nDraws))
@@ -739,10 +788,9 @@ CHMMPPperDraws <- function(
     # first observation: p(y_1| z_1) * p(z_1) (emission prob)
     delta[1, , ] <- t(log(draws[, idxEmission]) + llEventState[1, , ])
 
-    transProbs <- array(0, dim = c(nDraws, kStates, kStates))
+
 
     for (tt in seq(2, TT)) {
-      # compute transition probabilities
       for (k in seq_len(kStates)) {
         thetaii <- rowSums(draws[, idxTheta[k, ], drop = FALSE])
         soujorn <- dataStan$timespan[tt] * thetaii * -1
@@ -759,7 +807,7 @@ CHMMPPperDraws <- function(
 
       prevDelta <- t(delta[tt - 1, , ])
       for (k in seq_len(kStates)) {
-        T_1_xj <- prevDelta + transProbs[, , k] +
+        T_1_xj <- prevDelta + transProbs[tt, , , k] +
           llEventState[tt, , k]
 
         delta[tt, k, ] <- apply(T_1_xj, 1, max)
@@ -804,25 +852,10 @@ CHMMPPperDraws <- function(
     # p[, 1, ] <- sweep(p[, 1, ], 1, rowLogSumExps(p[, 1, ]))
 
     for (tt in seq(2, TT)) {
-      # compute transition probabilities
-      for (k in seq_len(kStates)) {
-        thetaii <- rowSums(draws[, idxTheta[k, ], drop = FALSE])
-        soujorn <- dataStan$timespan[tt] * thetaii * -1
-
-        for (l in seq_len(kStates)) {
-          if (k == l) {
-            transProbs[, k, l] <- log(1 - thetaii * exp(soujorn))
-          } else {
-            ll <- ifelse(k < l, l - 1, l)
-            transProbs[, k, l] <- log(draws[, idxTheta[k, ll]]) + soujorn
-          }
-        }
-      }
-
       # # one-step ahead prediction of S_t:
       # # p(S_t = k | y_{t-1}) = \sum_l \theta_{lk} p(S_{t-1} = l| y_{t-1})
       for (k in seq_len(kStates))
-        p[, tt, k] <- rowLogSumExps(transProbs[, , k] + p[, tt - 1, ]) +
+        p[, tt, k] <- rowLogSumExps(transProbs[tt, , , k] + p[, tt - 1, ]) +
           # # filter for S_t: p(S_t = k| y_t) =
           # #  p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) /
           # #  \sum_k p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) ; unnormalize enough
@@ -847,21 +880,6 @@ CHMMPPperDraws <- function(
     logBeta <- array(0, dim = c(nDraws, kStates))
 
     for (tt in seq(TT - 1, 1)) {
-      # compute transition probabilities
-      for (k in seq_len(kStates)) {
-        thetaii <- rowSums(draws[, idxTheta[k, ], drop = FALSE])
-        soujorn <- dataStan$timespan[tt] * thetaii * -1
-
-        for (l in seq_len(kStates)) {
-          if (k == l) {
-            transProbs[, k, l] <- log(1 - thetaii * exp(soujorn))
-          } else {
-            ll <- ifelse(k < l, l - 1, l)
-            transProbs[, k, l] <- log(draws[, idxTheta[k, ll]]) + soujorn
-          }
-        }
-      }
-
       # # Baum-Welch alg
       # #
       omegaBeta <- logBeta + llEventState[tt + 1, , ] # element-wise product
@@ -873,7 +891,7 @@ CHMMPPperDraws <- function(
             seq_len(nDraws),
             \(x){
               lastHS <- zSample[x, tt + 1]
-              transProbs[x, , lastHS] + omegaBeta[x, lastHS]
+              transProbs[tt, x, , lastHS] + omegaBeta[x, lastHS]
             },
             numeric(2)
           ))
@@ -885,7 +903,7 @@ CHMMPPperDraws <- function(
       }
       for (k in seq_len(kStates))
         logBeta[, k] <- rowLogSumExps(
-          transProbs[, , k] + omegaBeta
+          transProbs[tt, , , k] + omegaBeta
         )
 
       # running normalization
@@ -963,8 +981,10 @@ HMMDraws2LS <- function(
   subModel <- attr(data2Stan, "subModel")
 
   # extract draws and reformat for posterior computations
+  theta <- ifelse(model == "DNHMM", "theta", "ta")
+
   parmsKeep <- c(
-    "lp__", "theta", "pi1",
+    "lp__", theta, "pi1",
     if (subModel %in% c("both", "choice")) "betaChoice",
     if (subModel %in% c("rate")) "beta",
     if (subModel %in% c("both")) "betaRate"
@@ -974,7 +994,7 @@ HMMDraws2LS <- function(
     format = if (type == "draws_df") "draws_df" else "matrix"
   )
 
-  namesTheta <- grep("^theta", colnames(draws))
+  namesTheta <- grep(paste0("^", theta), colnames(draws))
   idxTheta <- matrix(
     namesTheta, nrow = kStates, ncol = length(namesTheta) / kStates
   )

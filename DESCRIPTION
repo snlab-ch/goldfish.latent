@@ -23,6 +23,7 @@ RoxygenNote: 7.2.3
 Imports: 
     bayesplot (>= 1.10.0),
     cmdstanr (>= 0.5.2),
+    expm,
     ggplot2,
     goldfish (>= 1.6.6),
     label.switching,
