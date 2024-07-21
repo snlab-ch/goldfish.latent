@@ -51,7 +51,8 @@ transformed parameters {
   pi1 = to_vector(v_ones / (m_ones - ta));
 }
 model {
-  target += lognormal_lpdf(to_vector(theta) | 0.28, 0.5);  
+  // target += lognormal_lpdf(to_vector(theta) | 0.28, 0.5);  
+  target += gamma_lpdf(to_vector(theta) | 2, 0.1);  
 
   for (n in 1:kR) {
     target += std_normal_lpdf(betaChoice[n]);
