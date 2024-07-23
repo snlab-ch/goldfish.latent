@@ -495,7 +495,7 @@ HMMPPperDraws <- function(
           )
         ))
         if (dataStan$isDependent[event]) {
-          logLik <- logLik + xbR[dataStan$choseRate[event], ] +
+          loglik <- loglik + xbR[dataStan$choseRate[event], ] +
             xbC[dataStan$choseChoice[eventChoice], ] -
             colLogSumExps(
               xbC,
@@ -507,7 +507,7 @@ HMMPPperDraws <- function(
           eventChoice <- eventChoice + 1L
         }
 
-        llEventState[event, , kS] <- logLik
+        llEventState[event, , kS] <- loglik
       }
     }
   }
@@ -691,7 +691,7 @@ CHMMPPperDraws <- function(
   idxBetaRate <- drawsObject$idxBetaRate
 
   if (!is.null(chainIter)) {
-    draws <- draws[, chainIter, ]
+    draws <- draws[, chainIter, , drop = TRUE]
   }
 
 
@@ -704,6 +704,7 @@ CHMMPPperDraws <- function(
   isRes <- !is.null(dataStan$Nres)
   TT <- ifelse(isRes, dataStan$Nres, nEvents)
 
+  logCrudeRate <- ifelse(!is.null(dataStan$offsetInt), log(dataStan$offsetInt), 0)
 
   if (subModel %in% c("choice")) {
     llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
@@ -730,7 +731,7 @@ CHMMPPperDraws <- function(
 
     for (kS in seq_len(kStates)) {
       xb <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
-        dataStan$offsetInt
+        logCrudeRate
 
       for (event in seq_len(nEvents)) {
         llEventState[event, , kS] <-
@@ -753,7 +754,7 @@ CHMMPPperDraws <- function(
 
     for (kS in seq_len(kStates)) {
       xbR <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
-        dataStan$offsetInt
+        logCrudeRate
       xbC <- tcrossprod(dataStan$Xchoice, draws[, idxBetaChoice[kS, ]])
 
       eventChoice <- 1L
@@ -766,7 +767,7 @@ CHMMPPperDraws <- function(
           )
         ))
         if (dataStan$isDependent[event]) {
-          logLik <- logLik + xbR[dataStan$choseRate[event], ] +
+          loglik <- loglik + xbR[dataStan$choseRate[event], ] +
             xbC[dataStan$choseChoice[eventChoice], ] -
             colLogSumExps(
               xbC,
@@ -778,7 +779,7 @@ CHMMPPperDraws <- function(
           eventChoice <- eventChoice + 1L
         }
 
-        llEventState[event, , kS] <- logLik
+        llEventState[event, , kS] <- loglik
       }
     }
   }
@@ -867,12 +868,12 @@ CHMMPPperDraws <- function(
       )
     )
 
-    alphas <- array(0, dim = c(nDraws, TT, kStates),
-      dimnames = list(
-        draws = seq_len(nDraws), time = seq_len(TT),
-        states = seq_len(kStates)
-      )
-    )
+    # alphas <- array(0, dim = c(nDraws, TT, kStates),
+    #   dimnames = list(
+    #     draws = seq_len(nDraws), time = seq_len(TT),
+    #     states = seq_len(kStates)
+    #   )
+    # )
 
     # log likelihood as sum of scaling factors, Kadhem 2015
     logLikRec <- array(0, dim = c(nDraws, TT),
@@ -891,13 +892,15 @@ CHMMPPperDraws <- function(
     #  Frühwirth, S., 2006
 
     # # filter at first observation:
-    # # p(S_1 = k, y_0) = p(y_1| S_1) * p(S_1); (emission prob)
+    # # p(S_1 = k, y_1) = p(y_1| S_1) * p(S_1); (emission prob)
     p[, 1, ] <- log(draws[, idxEmission]) + llEventState[1, , ]
     alphas[, 1, ] <- p[, 1, ]
-    # In Frühwirth: normalization is over llEventState, here follow Stan
+    # In Frühwirth: numerical stabilization
     p[, 1, ] <- sweep(p[, 1, ], 1, apply(p[, 1, ], 1, max))
     # Compute normalization constants Kadhem 2015
+    # p(y_1) = \sum_k p(y_1, S_1 = k), marginal prob up to t, Frühwirth 2006
     logLikRec[, 1] <- rowLogSumExps(alphas[, 1, ])
+    # Filtering for s_t: p(S_t = k| y_t) = p(y_t, S_t = k) / p(y_t)
     alphas[, 1, ] <- sweep(alphas[, 1, ], 1, logLikRec[, 1])
 
     # objects intermediate values
@@ -918,7 +921,7 @@ CHMMPPperDraws <- function(
           t(transProbs[idxTP[, k], , tt]) + alphas[, tt - 1, ]) +
           llEventState[tt, , k]
       }
-      # normalization as in Stan
+      # numerical stabilization
       p[, tt, ] <- sweep(ptt, 1, apply(ptt, 1, max))
       # Compute normalization constants Kadhem 2015
       logLikRec[, tt] <- rowLogSumExps(alphastt)
@@ -1149,7 +1152,7 @@ HMMDraws2LS <- function(
           1,
           RescaleCoefs,
           scaleStats = data2Stan[["scaleStats"]],
-          offset = data2Stan[["dataStan"]][["offsetInt"]],
+          offset = log(data2Stan[["dataStan"]][["offsetInt"]]),
           isRate = TRUE
         ))
       }
@@ -1196,8 +1199,18 @@ HMMDraws2LS <- function(
   return(output)
 }
 
-bindPPHMM <- function(listOutputs, type, smoothProbsSt) {
+bindPPHMM <- function(
+    listOutputs,
+    type = c("both", "viterbi", "smoothProbs"),
+    smoothProbsSt = c("joint", "marginal", "none")#,
+    #model = c("DNHMM", "DNCHMM")
+  ) {
+  type <- match.arg(type)
+  smoothProbsSt <- match.arg(smoothProbsSt)
+  #model <- match.arg(model)
+
   output <- list()
+  outputNames <- names(listOutputs[[1]])
 
   if (type %in% c("both", "viterbi")) {
     output[["viterbi"]] <- lapply(listOutputs, "[[", "viterbi") |>
@@ -1223,12 +1236,33 @@ bindPPHMM <- function(listOutputs, type, smoothProbsSt) {
 
     output[["smoothProbs"]] <- list(prob = prob)
 
-    if (smoothProbsSt != "type") {
+    if (smoothProbsSt != "none") {
       output[["smoothProbs"]][["zSample"]] <- lapply(
         listOutputs, "[[", "smoothProbs"
       ) |>
         lapply("[[", "zSample") |>
         (\(x) Reduce(rbind, x = x))()
+    }
+
+    namesReduce <- outputNames[!outputNames %in% c("smoothProbs", "viterbi")]
+
+    if (length(namesReduce) > 0) {
+      outputReduce <- lapply(
+        namesReduce,
+        \(x) lapply(
+          listOutputs,
+          "[[", x
+        ) |>
+          (\(x) {
+            if (is.array(x[[1]]) & inherits(x[[1]], "array")) {
+              Reduce(rbind, x = x)
+            } else if (inherits(x[[1]], "numeric")) {
+              Reduce(c, x = x)
+            }
+          })()
+      )
+      names(outputReduce) <- namesReduce
+      output <- c(output, outputReduce)
     }
   }
 
