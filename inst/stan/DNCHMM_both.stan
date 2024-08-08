@@ -3,7 +3,7 @@
 // Switching regime dynamics follow a continuous time HMM with kR states
 data {
   int<lower = 2> K;  // number of states
-  real offsetInt; // crude event rate
+  //real offsetInt; // crude event rate: 1 / mean(timespan) = Trate / sum(timespan) 
   // data rate sub-model
   int Nrate; // number of events * present actors
   int Trate; // number of events
@@ -36,7 +36,7 @@ transformed data {
   row_vector[K] v_ones = rep_row_vector(1.0, K);
   vector[K - 1] v_ones_Km1 = rep_vector(1.0, K - 1);
   matrix[K, K] m_ones = rep_matrix(1.0, K, K);
-  real log_crude_rate = log(offsetInt);
+  real log_crude_rate = log(Trate / (Nrate * mean(timespan))); // Trate / sum(timespan) / mean(actors) 
 }
 parameters {
   matrix<lower = 0>[K, K - 1] theta; // rates of transition between states

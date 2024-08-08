@@ -17,7 +17,10 @@ data {
   array[Trate] real<lower = 0> timespan;
   array[Trate] int<lower = 0, upper = 1> isDependent;
 
-  real offsetInt;
+  //real offsetInt;
+}
+transformed data {
+   real log_crude_rate = log(Trate / (Nrate * mean(timespan))); // Trate / sum(timespan) / mean(actors)
 }
 parameters {
   vector[Prate] beta;
@@ -30,7 +33,7 @@ model {
   // helper for likelihood
   {
     vector[Nrate] xb;
-    xb = Xrate * beta + offsetInt;
+    xb = Xrate * beta + log_crude_rate;
 
     for(t in 1:Trate) {
       if (timespan[t] > 0)

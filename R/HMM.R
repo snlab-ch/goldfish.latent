@@ -704,7 +704,10 @@ CHMMPPperDraws <- function(
   isRes <- !is.null(dataStan$Nres)
   TT <- ifelse(isRes, dataStan$Nres, nEvents)
 
-  logCrudeRate <- ifelse(!is.null(dataStan$offsetInt), log(dataStan$offsetInt), 0)
+  logCrudeRate <- ifelse(
+    subModel %in% c("both", "rate"),
+    log(dataStan$Trate / (dataStan$Nrate * mean(dataStan$timespan))), 0
+  )
 
   if (subModel %in% c("choice")) {
     llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
@@ -868,18 +871,11 @@ CHMMPPperDraws <- function(
       )
     )
 
-    # alphas <- array(0, dim = c(nDraws, TT, kStates),
-    #   dimnames = list(
-    #     draws = seq_len(nDraws), time = seq_len(TT),
-    #     states = seq_len(kStates)
-    #   )
-    # )
-
     # log likelihood as sum of scaling factors, Kadhem 2015
+    # those are the marginal probabilities of y_t
     logLikRec <- array(0, dim = c(nDraws, TT),
       dimnames = list(draws = seq_len(nDraws), time = seq_len(TT)))
 
-    totLogLik <- numeric(nDraws)
     # log likelihood conditional on the sample state, Kadhem 2015 and 2021
     logLikCond <- array(0, dim = c(nDraws, TT),
       dimnames = list(draws = seq_len(nDraws), time = seq_len(TT)))
@@ -894,18 +890,14 @@ CHMMPPperDraws <- function(
     # # filter at first observation:
     # # p(S_1 = k, y_1) = p(y_1| S_1) * p(S_1); (emission prob)
     p[, 1, ] <- log(draws[, idxEmission]) + llEventState[1, , ]
-    alphas[, 1, ] <- p[, 1, ]
-    # In Frühwirth: numerical stabilization
-    p[, 1, ] <- sweep(p[, 1, ], 1, apply(p[, 1, ], 1, max))
-    # Compute normalization constants Kadhem 2015
+    # Compute normalization constants Kadhem 2015 (It's just the marginal prob)
     # p(y_1) = \sum_k p(y_1, S_1 = k), marginal prob up to t, Frühwirth 2006
-    logLikRec[, 1] <- rowLogSumExps(alphas[, 1, ])
+    logLikRec[, 1] <- rowLogSumExps(p[, 1, ])
     # Filtering for s_t: p(S_t = k| y_t) = p(y_t, S_t = k) / p(y_t)
-    alphas[, 1, ] <- sweep(alphas[, 1, ], 1, logLikRec[, 1])
+    p[, 1, ] <- sweep(p[, 1, ], 1, logLikRec[, 1])
 
     # objects intermediate values
     ptt <- array(0, dim = c(nDraws, kStates))
-    alphastt <- array(0, dim = c(nDraws, kStates))
     for (tt in seq(2, TT)) {
       # # one-step ahead prediction of S_t:
       # # p(S_t = k | y_{t-1}) = \sum_l \theta_{lk} p(S_{t-1} = l| y_{t-1})
@@ -914,28 +906,23 @@ CHMMPPperDraws <- function(
           t(transProbs[idxTP[, k], ,tt]) + p[, tt - 1, ]) +
           # # filter for S_t: p(S_t = k| y_t) =
           # #  p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) /
-          # #  \sum_k p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) ; unnormalize enough
-          llEventState[tt, , k]
-
-        alphastt[, k] <- rowLogSumExps(
-          t(transProbs[idxTP[, k], , tt]) + alphas[, tt - 1, ]) +
+          # #  \sum_k p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1})
           llEventState[tt, , k]
       }
-      # numerical stabilization
-      p[, tt, ] <- sweep(ptt, 1, apply(ptt, 1, max))
-      # Compute normalization constants Kadhem 2015
-      logLikRec[, tt] <- rowLogSumExps(alphastt)
-      alphas[, tt, ] <- sweep(alphastt, 1, logLikRec[, tt])
+      # marginal prob (y) and filter probs P(S_t = k | y_t)
+      marginalProb <- rowLogSumExps(ptt)
+      logLikRec[, tt] <- marginalProb
+
+      p[, tt, ] <- sweep(ptt, 1, marginalProb)
     }
 
-    totLogLik <- rowLogSumExps(p[, TT, ])
     # Normalize last value, already smooth distribution
-    p[, TT, ] <- exp(sweep(p[, TT, ], 1, totLogLik))
+    p[, TT, ] <- exp(p[, TT, ])
 
     if (smoothProbsSt != "none") { # sample last Hidden State (HS)
       zSample[, TT] <- apply(
         p[, TT, ], 1,
-        \(x) sample.int(kStates, 1, prob = x)
+        \(x) sample.int(kStates, 1, prob = exp(x))
       )
 
       # Compute conditional log likelihood
@@ -946,26 +933,29 @@ CHMMPPperDraws <- function(
       )
     }
 
-    # backward: smoother suggested in Hamilton expresses these as marginal
-    # probabilities from the joint distribution of S_t and S_T | y
+    # backward-smoothing the States: suggested in Hamilton expresses
+    # these as marginal probabilities from the joint distribution 
+    # of S_t and S_T | y
     # Implementation follows Stan hmm_hidden_state_prob()
     #
 
-    # initial ending state ass as given (uniform)
+    # # Baum-Welch alg
+    # initial ending state is \beta_i(T) = 1
     logBeta <- array(0, dim = c(nDraws, kStates))
 
     for (tt in seq(TT - 1, 1)) {
-      # # Baum-Welch alg
+      # \beta_j(t) * p(y_{t+1} | S_{t+1} = j)
       omegaBeta <- logBeta + llEventState[tt + 1, , ] # element-wise product
 
       # intermezzo: sample the tt HS conditional on (tt+1)st HS as in Stan
-      # # FFBS, a.k.a, Multi-move sampling
+      # FFBS, a.k.a, Multi-move sampling
       if (smoothProbsSt == "joint") {
         probLastHS <- p[, tt, ] +
           t(vapply(
             seq_len(nDraws),
             \(x){
               lastHS <- zSample[x, tt + 1]
+              # p(S_{t+1} = j|S_t = i) * p(y_{t+1}|S_{t+1} = j) * \beta_j(t)
               t(transProbs[idxTP[, lastHS], x, tt]) + omegaBeta[x, lastHS]
             },
             numeric(2)
@@ -984,6 +974,7 @@ CHMMPPperDraws <- function(
         )
       }
       for (k in seq_len(kStates)) {
+        # p(S_{t+1} = j | S_t = i) * p(y_{t+1} | S_{t+1} = j) * \beta_j(t)
         logBeta[, k] <- rowLogSumExps(
           t(transProbs[idxTP[k, ], , tt]) + omegaBeta
         )
@@ -992,7 +983,8 @@ CHMMPPperDraws <- function(
       # running normalization
       logBeta <- sweep(logBeta, 1, apply(logBeta, 1, max))
 
-      #
+      # Update probs using bayes rule: P(X_t|y) = P(y | X_t) * P(X_t | y) / P(y)
+      # \beta_i(t) * \alpha_i(t)
       gammat <- logBeta + p[, tt, ]
       p[, tt, ] <- exp(sweep(gammat, 1, rowLogSumExps(gammat)))
 
@@ -1015,7 +1007,6 @@ CHMMPPperDraws <- function(
 
     output[["logLikRec"]] <- logLikRec
     output[["logLikCond"]] <- logLikCond
-    output[["totLogLik"]] <- totLogLik
   }
 
   return(output)
@@ -1146,13 +1137,18 @@ HMMDraws2LS <- function(
       }
     }
     if (subModel %in% c("both", "rate")) {
+      offSetInt <- log(
+        data2Stan$dataStan$Trate / 
+        (data2Stan$dataStan$Nrate *
+          mean(data2Stan$dataStan$timespan))
+      )
       for (state in seq_len(kStates)) {
         output[["draws"]][, idxBetaRate[state, ]] <- t(apply(
           output[["draws"]][, idxBetaRate[state, ]],
           1,
           RescaleCoefs,
           scaleStats = data2Stan[["scaleStats"]],
-          offset = log(data2Stan[["dataStan"]][["offsetInt"]]),
+          offset = offSetInt,
           isRate = TRUE
         ))
       }

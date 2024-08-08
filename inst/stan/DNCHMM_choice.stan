@@ -2,8 +2,8 @@
 // The choice model with P covariates
 // Switching regime dynamics with kR states
 data {
-  int<lower = 2> kR;  // number of states
-  real offsetInt; // kappa for Blackwell Integrated CHMM
+  int<lower = 2> K;  // number of states
+  // real offsetInt; // kappa for Blackwell Integrated CHMM
   //
   int Nchoice; // number of events * actors in the choice set
   int Tchoice; // number of events
@@ -20,24 +20,24 @@ data {
   array[Tchoice] real<lower = 0> timespan;
 }
 transformed data {
-  row_vector[kR] v_ones = rep_row_vector(1.0, kR);
-  vector[kR - 1] v_ones_kRm1 = rep_vector(1.0, kR - 1);
-  matrix[kR, kR] m_ones = rep_matrix(1.0, kR, kR);
-  real alpha = offsetInt / kR;
+  row_vector[K] v_ones = rep_row_vector(1.0, K);
+  vector[K - 1] v_ones_Km1 = rep_vector(1.0, K - 1);
+  matrix[K, K] m_ones = rep_matrix(1.0, K, K);
+  real log_crude_rate = log(Tchoice / ((Nchoice + Tchoice) * mean(timespan))); // Trate / sum(timespan) / mean(actors) 
 }
 parameters {
-  matrix<lower = 0>[kR, kR - 1] theta; // rates of transition between states
-  array[kR] vector[Pchoice] betaChoice; // parms for each state
+  matrix<lower = 0>[K, K - 1] theta; // rates of transition between states
+  array[K] vector[Pchoice] betaChoice; // parms for each state
 }
 transformed parameters {
-  simplex[kR] pi1;
-  matrix[kR, kR] ta;
+  simplex[K] pi1;
+  matrix[K, K] ta;
 
   {
     // \lambda_i = \sum_{j \neq i} \lambda_{ij}
-    vector[kR] theta_row_sum = theta * v_ones_kRm1;
-    for (j in 1:kR) {
-      for (i in 1:kR) {
+    vector[K] theta_row_sum = theta * v_ones_Km1;
+    for (j in 1:K) {
+      for (i in 1:K) {
         if (i == j) {
           // row sums set to zero
           ta[i, j] = - theta_row_sum[i];
@@ -54,22 +54,22 @@ model {
   // target += lognormal_lpdf(to_vector(theta) | 0.28, 0.5);  
   target += gamma_lpdf(to_vector(theta) | 2, 0.1); // Blackwell 2016  
 
-  for (n in 1:kR) {
+  for (n in 1:K) {
     target += std_normal_lpdf(betaChoice[n]);
   }
 
-  array[kR] vector[kR] log_theta_tr;
-  matrix[kR, kR] theta_exp;
+  array[K] vector[K] log_theta_tr;
+  matrix[K, K] theta_exp;
   // real sojourn;
   // real kappa;
-  vector[kR] lp;
-  vector[kR] lp_p1;
+  vector[K] lp;
+  vector[K] lp_p1;
 
   // compute log probabilities of observed data given state
-  array[Tchoice] vector[kR] log_omega;
+  array[Tchoice] vector[K] log_omega;
   {
     vector[Nchoice] xbChoice;
-    for (n in 1:kR) {
+    for (n in 1:K) {
       xbChoice = Xchoice * betaChoice[n];
       for (t in 1:Tchoice) {
         log_omega[t, n] = xbChoice[choseChoice[t]] -
@@ -94,16 +94,16 @@ model {
     // compute log probabilities of transition given time in state
 
     theta_exp = matrix_exp(timespan[t] * ta);
-    for (n in 1:kR) {
+    for (n in 1:K) {
       // -\lambda_i * \Delta_t
       // sojourn = timespan[t] * ta[n, n];
-      for (n_from in 1:kR) {
+      for (n_from in 1:K) {
         // transpose the tpm and take natural log of entries
         log_theta_tr[n, n_from] = log(theta_exp[n_from, n]);
       }
     }
 
-    for (n in 1:kR) { // looping over states
+    for (n in 1:K) { // looping over states
 /*       lp_p1[n] = log_sum_exp(log_theta_tr[n] + lp) +
         xbChoice[n][choseChoice[t]] -
         log_sum_exp(xbChoice[n][startChoice[t]:endChoice[t]]);
