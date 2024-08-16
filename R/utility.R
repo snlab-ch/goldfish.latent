@@ -242,7 +242,7 @@ ReadParms.both <- function(x) {
 #'   systematic sampling and simple random sampling without replacement,
 #'   respectively. It is possible to use an external function that has arguments
 #'   `N` and `fraction` and return a numerical vector of the samples
-#'   to keep is possible.
+#'   to keep.
 #' @param data output from [CreateDataSR()] or [CreateData()]
 #' @param fractionChoiceSet numerical value that indicates the proportion of
 #'   alternatives to sample from the choice set or the compiting actors in the
@@ -264,8 +264,8 @@ ReadParms.both <- function(x) {
 #' sampledData <- SampleData(data)
 SampleData <- function(
     data,
-    fractionChoiceSet = 0.1, methodChoiceSet = "srswor",
-    fractionEvents = 1, methodEvents = "systematic"
+    fractionChoiceSet = 0.1, methodChoiceSet = c("srswor", "systematic"),
+    fractionEvents = 1, methodEvents = c("systematic", "srswor")
 ) {
   stopifnot(
     inherits(data, "goldfish.latent.data"),
@@ -283,10 +283,11 @@ SampleData <- function(
   methodEvents <- match.arg(methodEvents, c("systematic", "srswor"))
 
   dataStan <- data$dataStan
+  model <- attr(data, "model")
+  subModel <- attr(data, "subModel")
   CollapseSample <- function(x) Reduce(f = rbind, x = x)
 
-  if (attr(data, "model") %in% c("DyNAMSR") &&
-      attr(data, "subModel") %in% c("both", "rate")) {
+  if (model %in% c("DNHMM", "DNCHMM") && subModel %in% c("both", "rate")) {
     dataStan <- within(
       dataStan,
       {
@@ -348,8 +349,7 @@ SampleData <- function(
       })
   }
 
-  if (attr(data, "model") %in% c("DyNAMSR") &&
-             attr(data, "subModel") %in% c("both", "choice")) {
+  if (model %in% c("DNHMM", "DNCHMM") && subModel %in% c("both", "choice")) {
     dataStan <- within(
       dataStan,
       {

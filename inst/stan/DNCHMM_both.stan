@@ -36,7 +36,10 @@ transformed data {
   row_vector[K] v_ones = rep_row_vector(1.0, K);
   vector[K - 1] v_ones_Km1 = rep_vector(1.0, K - 1);
   matrix[K, K] m_ones = rep_matrix(1.0, K, K);
+  //real delta = mean(timespan);
   real log_crude_rate = log(Trate / (Nrate * mean(timespan))); // Trate / sum(timespan) / mean(actors) 
+  //real mu_rate = log(2 / (delta * K * sqrt(4 + (K - 1)^2)));
+  //real sigma_rate = sqrt(log(1 + (K - 1)^2 / 4));
 }
 parameters {
   matrix<lower = 0>[K, K - 1] theta; // rates of transition between states
@@ -65,8 +68,11 @@ transformed parameters {
   pi1 = to_vector(v_ones / (m_ones - ta));
 }
 model {
-  // target += lognormal_lpdf(to_vector(theta) | 0.28, 0.5);  
-  target += gamma_lpdf(to_vector(theta) | 2, 0.1); // Blackwell 2016  
+  //target += lognormal_lpdf(to_vector(theta) | mu_rate, sigma_rate);  
+  // target += gamma_lpdf(to_vector(theta) | 2, 0.1); // Blackwell 2016  
+  target += gamma_lpdf(to_vector(theta) | 2, 0.5); // distribution concentrated below 1
+  // target += exponential_lpdf(to_vector(theta) | 1); //
+
 
   for (n in 1:K) {
     // Bayesian Survival Analysis Using rstanarm N(0, 20)
@@ -93,7 +99,7 @@ model {
       xbRate = Xrate * betaRate[n] + log_crude_rate;
       xbChoice = Xchoice * betaChoice[n];
       ttChoice = 1;
-      for (t in 1:Tchoice) {
+      for (t in 1:Trate) {
         acum = -timespan[t] * exp(log_sum_exp(xbRate[startRate[t]:endRate[t]]));
         if (isDependent[t]) {
           log_omega[t, n] = xbRate[choseRate[t]] + acum + // rate log-likelihood

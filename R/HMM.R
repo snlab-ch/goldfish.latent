@@ -384,6 +384,7 @@ HMMPostProcessing <- function(
       )
     )
   } else {
+    on.exit(parallel::stopCluster(cl))
     ignore <- parallel::clusterEvalQ(cl, {
       library(matrixStats)
       library(expm)
@@ -958,7 +959,7 @@ CHMMPPperDraws <- function(
               # p(S_{t+1} = j|S_t = i) * p(y_{t+1}|S_{t+1} = j) * \beta_j(t)
               t(transProbs[idxTP[, lastHS], x, tt]) + omegaBeta[x, lastHS]
             },
-            numeric(2)
+            numeric(kStates)
           ))
         probLastHS <- exp(sweep(probLastHS, 1, rowLogSumExps(probLastHS)))
         zSample[, tt] <- apply(
@@ -1141,7 +1142,7 @@ HMMDraws2LS <- function(
         data2Stan$dataStan$Trate / 
         (data2Stan$dataStan$Nrate *
           mean(data2Stan$dataStan$timespan))
-      )
+      ) - log(data2Stan$dataStan$rescalingFactor)
       for (state in seq_len(kStates)) {
         output[["draws"]][, idxBetaRate[state, ]] <- t(apply(
           output[["draws"]][, idxBetaRate[state, ]],
@@ -1152,6 +1153,8 @@ HMMDraws2LS <- function(
           isRate = TRUE
         ))
       }
+      output[["draws"]][, idxTheta] <- output[["draws"]][, idxTheta] /
+        data2Stan$dataStan$rescalingFactor
     }
     return(output)
   }
@@ -1345,9 +1348,12 @@ plotLabelSwitching <- function(
 HSData <- function(
     postProcessing,
     type = c("probRibbon", "stateSample"),
-    probsQuant = c(0.1, 0.25, 0.75, 0.9)) {
+    probsQuant = c(0.1, 0.25, 0.75, 0.9),
+    pointEst = c("median", "mean")) {
   type <- match.arg(type)
-  stopifnot(length(type) > 1)
+  pointEst <- match.arg(pointEst)
+
+  stopifnot(length(type) == 1)
 
   if (type == "probRibbon") {
     dataPlot <- postProcessing[["smoothProbs"]][["prob"]]
@@ -1431,7 +1437,8 @@ plotHS <- function(
   if (type == "probRibbon") {
     dataPlot <- HSData(
       postProcessing = postProcessing, type = type,
-      probsQuant = probsQuant
+      probsQuant = probsQuant,
+      pointEst = pointEst
     )
     posDodge <- ggplot2::position_dodge(
       width = 1 / length(unique(dataPlot$state))
@@ -1455,7 +1462,8 @@ plotHS <- function(
     return(plotRibbon)
   } else if (type == "stateSample") {
     plotSample <- ggplot2::ggplot(
-      HSData(postProcessing = postProcessing, type = type),
+      HSData(postProcessing = postProcessing, type = type,
+      pointEst = pointEst),
       ggplot2::aes(x = .data$time, y = .data$zSample)
     ) +
       ggplot2::geom_point(ggplot2::aes(size = .data$Freq)) +
