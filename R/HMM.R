@@ -318,7 +318,10 @@ CreateDataHMM <- function(
 #' are drawn either using the smoothed probabilities `"marginal"` or
 #' conditioning of the next sample state `"joint"`.
 #' Only used when `type = "both"` or `type = "smoothProbs"`.
-#'
+#' @param cl an optional `cluster` object to parallelize the
+#' post-processing
+#' @param nnodes an integer specifying the number of nodes to use in the
+#' parallelization.
 #' @return a list with the most probable path when Viterbi algorithm is used
 #' and/or the smoothed probabilities and sample paths when the
 #' Forward-Backward algorithm is used.
@@ -345,7 +348,7 @@ HMMPostProcessing <- function(
     kStates = dataStan$dataStan$kS,
     type = c("both", "viterbi", "smoothProbs"),
     smoothProbsSt = c("joint", "marginal", "none"),
-    cl = NULL) {
+    cl = NULL, nnodes = parallel::detectCores() - 1L) {
   type <- match.arg(type)
   smoothProbsSt <- match.arg(smoothProbsSt)
 
@@ -361,6 +364,7 @@ HMMPostProcessing <- function(
 
   # extract draws and reformat for posterior computations
   typeOutput <- ifelse(is.null(cl), "draws_matrix", "draws_array")
+  typeOutput <- "draws_matrix"  # change parallelization
 
   drawsObject <- HMMDraws2LS(
     dataStan, cmdstanSamples,
@@ -395,9 +399,10 @@ HMMPostProcessing <- function(
       library(expm)
       NULL
     })
+    
     output <- parallel::clusterApplyLB(
       cl = cl,
-      seq_len(cmdstanSamples$num_chains()),
+      seq_len(nnodes),
       fun = switch(
         model,
          "DNHMM" = HMMPPperDraws,
@@ -410,7 +415,8 @@ HMMPostProcessing <- function(
       subModel = subModel,
       kStates = kStates,
       type = type,
-      smoothProbsSt = smoothProbsSt
+      smoothProbsSt = smoothProbsSt,
+      nnodes = nnodes
     ) |>
       bindPPHMM(type = type, smoothProbsSt = smoothProbsSt)
   }
@@ -420,7 +426,7 @@ HMMPostProcessing <- function(
 
 HMMPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt) {
+    kStates, type, smoothProbsSt, nnodes) {
   # init output
   output <- list()
 
@@ -431,7 +437,8 @@ HMMPPperDraws <- function(
   idxBetaRate <- drawsObject$idxBetaRate
 
   if (!is.null(chainIter)) {
-    draws <- draws[, chainIter, ]
+    splitDraws <- parallel::splitIndices(nrow(draws), nnodes)
+    draws <- draws[splitDraws[[chainIter]], ]
   }
 
 
@@ -691,7 +698,7 @@ HMMPPperDraws <- function(
 #' @importFrom expm expm
 CHMMPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt) {
+    kStates, type, smoothProbsSt, nnodes) {
   # init output
   output <- list()
 
@@ -702,7 +709,8 @@ CHMMPPperDraws <- function(
   idxBetaRate <- drawsObject$idxBetaRate
 
   if (!is.null(chainIter)) {
-    draws <- draws[, chainIter, , drop = TRUE]
+    splitDraws <- parallel::splitIndices(nrow(draws), nnodes)
+    draws <- draws[splitDraws[[chainIter]], ]
   }
 
 
@@ -1025,7 +1033,7 @@ CHMMPPperDraws <- function(
 
 CHMMREPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt) {
+    kStates, type, smoothProbsSt, nnodes) {
   # init output
   output <- list()
 
@@ -1043,7 +1051,8 @@ CHMMREPPperDraws <- function(
 
 
   if (!is.null(chainIter)) {
-    draws <- draws[, chainIter, , drop = TRUE]
+    splitDraws <- parallel::splitIndices(nrow(draws), nnodes)
+    draws <- draws[splitDraws[[chainIter]], ]
   }
 
 
