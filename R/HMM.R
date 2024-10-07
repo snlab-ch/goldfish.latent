@@ -399,10 +399,13 @@ HMMPostProcessing <- function(
       library(expm)
       NULL
     })
-    
+
+    nDraws <- nrow(drawsObject$draws)
+    kFactor <- nDraws %% nnodes %% 500
+
     output <- parallel::clusterApplyLB(
       cl = cl,
-      seq_len(nnodes),
+      seq_len(nnodes * kFactor),
       fun = switch(
         model,
          "DNHMM" = HMMPPperDraws,
@@ -416,7 +419,8 @@ HMMPostProcessing <- function(
       kStates = kStates,
       type = type,
       smoothProbsSt = smoothProbsSt,
-      nnodes = nnodes
+      nnodes = nnodes,
+      kFactor = kFactor
     ) |>
       bindPPHMM(type = type, smoothProbsSt = smoothProbsSt)
   }
@@ -426,7 +430,7 @@ HMMPostProcessing <- function(
 
 HMMPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt, nnodes) {
+    kStates, type, smoothProbsSt, nnodes, kFactor) {
   # init output
   output <- list()
 
@@ -437,7 +441,7 @@ HMMPPperDraws <- function(
   idxBetaRate <- drawsObject$idxBetaRate
 
   if (!is.null(chainIter)) {
-    splitDraws <- parallel::splitIndices(nrow(draws), nnodes)
+    splitDraws <- parallel::splitIndices(nrow(draws), nnodes * kFactor)
     draws <- draws[splitDraws[[chainIter]], ]
   }
 
@@ -698,7 +702,7 @@ HMMPPperDraws <- function(
 #' @importFrom expm expm
 CHMMPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt, nnodes) {
+    kStates, type, smoothProbsSt, nnodes, kFactor) {
   # init output
   output <- list()
 
@@ -709,7 +713,7 @@ CHMMPPperDraws <- function(
   idxBetaRate <- drawsObject$idxBetaRate
 
   if (!is.null(chainIter)) {
-    splitDraws <- parallel::splitIndices(nrow(draws), nnodes)
+    splitDraws <- parallel::splitIndices(nrow(draws), nnodes * kFactor)
     draws <- draws[splitDraws[[chainIter]], ]
   }
 
@@ -953,7 +957,7 @@ CHMMPPperDraws <- function(
     }
 
     # backward-smoothing the States: suggested in Hamilton expresses
-    # these as marginal probabilities from the joint distribution 
+    # these as marginal probabilities from the joint distribution
     # of S_t and S_T | y
     # Implementation follows Stan hmm_hidden_state_prob()
     #
@@ -1033,7 +1037,7 @@ CHMMPPperDraws <- function(
 
 CHMMREPPperDraws <- function(
     chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt, nnodes) {
+    kStates, type, smoothProbsSt, nnodes, kFactor) {
   # init output
   output <- list()
 
@@ -1051,7 +1055,7 @@ CHMMREPPperDraws <- function(
 
 
   if (!is.null(chainIter)) {
-    splitDraws <- parallel::splitIndices(nrow(draws), nnodes)
+    splitDraws <- parallel::splitIndices(nrow(draws), nnodes * kFactor)
     draws <- draws[splitDraws[[chainIter]], ]
   }
 
@@ -1085,7 +1089,7 @@ CHMMREPPperDraws <- function(
         eventIdx <- seq(dataStan$startChoice[event], dataStan$endChoice[event])
         eventChose <- dataStan$choseChoice[event] - dataStan$startChoice[event] + 1
         xb <- tcrossprod(Xchoice[eventIdx, ], draws[, idxBetaChoice[kS, ]]) +
-          tcrossprod(Zchoice[eventIdx, ], draws[, idxGammaChoice[kS, group[eventIdx[1]], ]])  
+          tcrossprod(Zchoice[eventIdx, ], draws[, idxGammaChoice[kS, group[eventIdx[1]], ]])
 
         llEventState[event, , kS] <- xb[eventChose, ] - colLogSumExps(xb)
       }
@@ -1136,11 +1140,11 @@ CHMMREPPperDraws <- function(
             logCrudeRate
         loglik <- -dataStan$timespan[event] * exp(colLogSumExps(xbR))
         if (dataStan$isDependent[event]) {
-          loglik <- loglik + xbR[eventChose, ] 
-          
+          loglik <- loglik + xbR[eventChose, ]
+
           eventIdx <- seq(dataStan$startChoice[eventChoice], dataStan$endChoice[eventChoice])
           eventChose <- dataStan$choseChoice[eventChoice] - dataStan$startChoice[eventChoice] + 1
-          
+
           xbC <- tcrossprod(Xchoice[eventIdx, ], draws[, idxBetaChoice[kS, ]]) +
             tcrossprod(Zchoice[eventIdx, ],
               draws[, idxGammaChoice[kS, group[eventIdx[1]], ]])
@@ -1310,7 +1314,7 @@ CHMMREPPperDraws <- function(
       }
 
       # backward-smoothing the States: suggested in Hamilton expresses
-      # these as marginal probabilities from the joint distribution 
+      # these as marginal probabilities from the joint distribution
       # of S_t and S_T | y
       # Implementation follows Stan hmm_hidden_state_prob()
       #
@@ -1453,8 +1457,8 @@ HMMDraws2LS <- function(
           c("gammaChoice", "L_OmegaChoice", "L_sigmaChoice"),
         if (subModel %in% c("rate"))
           c("gamma", "L_Omega", "L_sigma"),
-        if (subModel %in% c("both")) 
-          c("gammaRate", "L_OmegaRate", "L_sigmaRate")  
+        if (subModel %in% c("both"))
+          c("gammaRate", "L_OmegaRate", "L_sigmaRate")
       )
   )
   draws <- cmdstanSamples$draws(
@@ -1519,7 +1523,7 @@ HMMDraws2LS <- function(
     )
     output[["idxBetaRate"]] <- idxBetaRate
     kPrate <- data2Stan$dataStan$Prate
-    
+
     if (model == "DNCHMMRE") {
       idxGammaRate <- array(
         grep("^gammaRate[[]", colnames(draws)),
@@ -1535,7 +1539,7 @@ HMMDraws2LS <- function(
 
       idxLSigmaRate <- matrix(
         grep("^L_sigmaRate[[]", colnames(draws)),
-        row = kStates, col = data2Stan$dataStan$Qrate
+        nrow = kStates, ncol = data2Stan$dataStan$Qrate
       )
       output[["idxLSigmaRate"]] <- idxLSigmaRate
     }
@@ -1596,7 +1600,7 @@ HMMDraws2LS <- function(
     }
     if (subModel %in% c("both", "rate")) {
       offSetInt <- log(
-        data2Stan$dataStan$Trate / 
+        data2Stan$dataStan$Trate /
         (data2Stan$dataStan$Nrate *
           mean(data2Stan$dataStan$timespan))
       ) - log(data2Stan$dataStan$rescalingFactor)
@@ -1624,8 +1628,8 @@ HMMDraws2LS <- function(
       }
       output[["draws"]][, idxTheta] <- output[["draws"]][, idxTheta] /
         data2Stan$dataStan$rescalingFactor
-      
-      
+
+
     }
     return(output)
   }
@@ -1947,7 +1951,7 @@ plotHS <- function(
 }
 
 #' Transform MCMC Array
-#' 
+#'
 #' @param data2Stan a list output from `CreateDataHMM`
 #' @param cmdstanSamples a list output from `CmdStanMCMC`
 #' @param labelSwitching a list output from `label.switching`
@@ -1955,7 +1959,7 @@ plotHS <- function(
 #' @param kStates the number of states in the HMM
 #' @param method a character specifying the method to use for the permutation
 #' @param rescale a logical specifying if the draws should be rescaled
-#' 
+#'
 #' @return a list with the permuted post processed statistics
 #' @export
 transformMCMCArray <- function(
@@ -2014,7 +2018,7 @@ transformMCMCArray <- function(
 }
 
 #' Permute MCMC Array
-#' 
+#'
 #' @param draws a list output of `HMMDraws2LS`
 #' @param permutation a numeric vector output from the `label.switching`
 #'  package with the permutation to apply to each draw
@@ -2022,14 +2026,14 @@ transformMCMCArray <- function(
 #' @param subModel a character specifying the submodel of the HMM
 #' @param hmmType a character specifying the type of HMM between
 #'  discrete and continuous
-#' 
+#'
 #' @return a data frame with the permuted draws
-#' @export 
+#' @export
 permuteMCMCArray <- function(
     draws, permutation, kStates,
     model = c("DNHMM", "DNCHMM", "DNCHMMRE"), subModel = c("choice", "rate", "both"),
     hmmType = c("discrete", "continuous")) {
-  
+
   model <- match.arg(model)
   subModel <- match.arg(subModel)
   hmmType <- match.arg(hmmType)
