@@ -168,7 +168,7 @@ model {
   for (k in 1:K) {
     target += std_normal_lpdf(betaChoice[k]);
     target += lkj_corr_cholesky_lpdf(L_OmegaChoice[k] | 2); // bigger than one
-    target += gamma_lpdf(L_sigmaChoice[k] | 2, 1.0 / 2.0); // prior over sd, instead of cauchy
+    target += gamma_lpdf(L_sigmaChoice[k] | 2, 2.0); // prior over sd, instead of cauchy
     target += std_normal_lpdf(to_vector(gamma_rawChoice[k]));
   }
 
