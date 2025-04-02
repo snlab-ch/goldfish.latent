@@ -10,7 +10,8 @@ HMMPostProcessing(
   kStates = dataStan$dataStan$kS,
   type = c("both", "viterbi", "smoothProbs"),
   smoothProbsSt = c("joint", "marginal", "none"),
-  cl = NULL
+  cl = NULL,
+  nnodes = parallel::detectCores() - 1L
 )
 }
 \arguments{
@@ -27,6 +28,12 @@ processing of the posterior distribution samples.}
 are drawn either using the smoothed probabilities \code{"marginal"} or
 conditioning of the next sample state \code{"joint"}.
 Only used when \code{type = "both"} or \code{type = "smoothProbs"}.}
+
+\item{cl}{an optional \code{cluster} object to parallelize the
+post-processing}
+
+\item{nnodes}{an integer specifying the number of nodes to use in the
+parallelization.}
 
 \item{data2Stan}{a object of class \code{"goldfish.latent.data"} outcome of a call
 to \code{\link[=CreateDataHMM]{CreateDataHMM()}}.}

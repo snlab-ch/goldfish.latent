@@ -22,16 +22,17 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
 Imports: 
     bayesplot (>= 1.10.0),
-    cmdstanr (>= 0.5.2),
+    cmdstanr (>= 0.8.0),
     expm,
     ggplot2,
-    goldfish (>= 1.6.6),
+    goldfish (>= 1.6.10),
     label.switching,
     loo,
     matrixStats,
-    posterior (>= 1.2.2),
+    posterior (>= 1.5.0),
     Rdpack (>= 0.7),
     rlang,
+    sampling,
     statmod
 Remotes: 
     github::snlab-ch/goldfish@c34807ef2b0eb2d5c733d556a579c9b51b2e7258,

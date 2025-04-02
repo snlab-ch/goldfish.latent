@@ -50,7 +50,7 @@ CreateModelCode.default <- function(dataStan, ...) {
   subModel <- attr(dataStan, "subModel")
 
   if (model == "DyNAMRE" && subModel == "choice") {
-    if (dataStan[["dataStan"]][["Q"]] == 1) {
+    if (dataStan[["dataStan"]][["Qchoice"]] == 1) {
       fileModel <- "DNRE1_choice.stan"
     } else stop("Not yet implemented for more than one random effect")
   } else if (model == "DNHMM") {
@@ -87,60 +87,60 @@ CreateModelCode.default <- function(dataStan, ...) {
 
 #' @rdname CreateModelCode
 #' @export
-CreateModelCode.DNRE <- function(
-    dataStan,
-    subModel = attr(dataStan, "subModel"),
-    prior = c("normal", "t-student"),
-    priorRE = c("default", "gamma", "invWishart", "LKJ"),
-    generateQuantities = FALSE,
-    ...
-) {
-  prior <- match.arg(prior)
-  priorRE <- match.arg(priorRE)
-  subModel <- match.arg(subModel, c("both", "choice", "rate"))
-
-  Q <- ifelse(
-    !is.null(dataStan[["stan"]][["Qrate"]]),
-    dataStan[["stan"]][["Qrate"]],
-    0L
-  ) +
-    ifelse(
-      !is.null(dataStan[["stan"]][["Qchoice"]]),
-      dataStan[["stan"]][["Qchoice"]],
-      0L
-    )
-
-  typeQ <- ifelse(Q > 1, "Qm", "Q1")
-
-  parmsFE <- do.call(
-    utils::getS3method("ReadParms", subModel),
-    list(x = prior)
-  )
-  parmsRE <- c(
-    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
-    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
-  )
-  stanCode <- c(
-    "data {",
-    ReadStanChunkType(subModel, "DN", "data"),
-    "  int A; // number of senders",
-    ReadStanChunkType(subModel, "DNRE", "data"),
-    "}\nparameters {",
-    parmsFE[["pm"]],
-    parmsRE[["pm"]],
-    "}",
-    parmsRE[["tp"]],
-    "model {\n  //priors",
-    parmsFE[["pr"]],
-    parmsRE[["pr"]],
-    "  // loglikelihood",
-    parmsRE[["ll"]],
-    "}",
-    if (generateQuantities) parmsRE[["gq"]]
-  )
-
-  cmdstanr::write_stan_file(code = stanCode)
-}
+# CreateModelCode.DNRE <- function(
+#     dataStan,
+#     subModel = attr(dataStan, "subModel"),
+#     prior = c("normal", "t-student"),
+#     priorRE = c("default", "gamma", "invWishart", "LKJ"),
+#     generateQuantities = FALSE,
+#     ...
+# ) {
+#   prior <- match.arg(prior)
+#   priorRE <- match.arg(priorRE)
+#   subModel <- match.arg(subModel, c("both", "choice", "rate"))
+#
+#   Q <- ifelse(
+#     !is.null(dataStan[["stan"]][["Qrate"]]),
+#     dataStan[["stan"]][["Qrate"]],
+#     0L
+#   ) +
+#     ifelse(
+#       !is.null(dataStan[["stan"]][["Qchoice"]]),
+#       dataStan[["stan"]][["Qchoice"]],
+#       0L
+#     )
+#
+#   typeQ <- ifelse(Q > 1, "Qm", "Q1")
+#
+#   parmsFE <- do.call(
+#     utils::getS3method("ReadParms", subModel),
+#     list(x = prior)
+#   )
+#   parmsRE <- c(
+#     SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
+#     SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
+#   )
+#   stanCode <- c(
+#     "data {",
+#     ReadStanChunkType(subModel, "DN", "data"),
+#     "  int A; // number of senders",
+#     ReadStanChunkType(subModel, "DNRE", "data"),
+#     "}\nparameters {",
+#     parmsFE[["pm"]],
+#     parmsRE[["pm"]],
+#     "}",
+#     parmsRE[["tp"]],
+#     "model {\n  //priors",
+#     parmsFE[["pr"]],
+#     parmsRE[["pr"]],
+#     "  // loglikelihood",
+#     parmsRE[["ll"]],
+#     "}",
+#     if (generateQuantities) parmsRE[["gq"]]
+#   )
+#
+#   cmdstanr::write_stan_file(code = stanCode)
+# }
 
 ReadStanChunk <- function(prefix, type, suffix, isType = TRUE) {
   fileChunk <- paste0(

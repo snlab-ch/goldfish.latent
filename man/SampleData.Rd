@@ -7,9 +7,9 @@
 SampleData(
   data,
   fractionChoiceSet = 0.1,
-  methodChoiceSet = "srswor",
+  methodChoiceSet = c("srswor", "systematic"),
   fractionEvents = 1,
-  methodEvents = "systematic"
+  methodEvents = c("systematic", "srswor")
 )
 }
 \arguments{
@@ -40,7 +40,7 @@ For arguments \code{methodChoiceSet} and \code{methodEvents} the available metho
 systematic sampling and simple random sampling without replacement,
 respectively. It is possible to use an external function that has arguments
 \code{N} and \code{fraction} and return a numerical vector of the samples
-to keep is possible.
+to keep.
 }
 \examples{
 sampledData <- SampleData(data)
