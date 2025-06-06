@@ -87,60 +87,60 @@ CreateModelCode.default <- function(dataStan, ...) {
 
 #' @rdname CreateModelCode
 #' @export
-# CreateModelCode.DNRE <- function(
-#     dataStan,
-#     subModel = attr(dataStan, "subModel"),
-#     prior = c("normal", "t-student"),
-#     priorRE = c("default", "gamma", "invWishart", "LKJ"),
-#     generateQuantities = FALSE,
-#     ...
-# ) {
-#   prior <- match.arg(prior)
-#   priorRE <- match.arg(priorRE)
-#   subModel <- match.arg(subModel, c("both", "choice", "rate"))
-#
-#   Q <- ifelse(
-#     !is.null(dataStan[["stan"]][["Qrate"]]),
-#     dataStan[["stan"]][["Qrate"]],
-#     0L
-#   ) +
-#     ifelse(
-#       !is.null(dataStan[["stan"]][["Qchoice"]]),
-#       dataStan[["stan"]][["Qchoice"]],
-#       0L
-#     )
-#
-#   typeQ <- ifelse(Q > 1, "Qm", "Q1")
-#
-#   parmsFE <- do.call(
-#     utils::getS3method("ReadParms", subModel),
-#     list(x = prior)
-#   )
-#   parmsRE <- c(
-#     SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
-#     SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
-#   )
-#   stanCode <- c(
-#     "data {",
-#     ReadStanChunkType(subModel, "DN", "data"),
-#     "  int A; // number of senders",
-#     ReadStanChunkType(subModel, "DNRE", "data"),
-#     "}\nparameters {",
-#     parmsFE[["pm"]],
-#     parmsRE[["pm"]],
-#     "}",
-#     parmsRE[["tp"]],
-#     "model {\n  //priors",
-#     parmsFE[["pr"]],
-#     parmsRE[["pr"]],
-#     "  // loglikelihood",
-#     parmsRE[["ll"]],
-#     "}",
-#     if (generateQuantities) parmsRE[["gq"]]
-#   )
-#
-#   cmdstanr::write_stan_file(code = stanCode)
-# }
+CreateModelCode.DNRE <- function(
+    dataStan,
+    subModel = attr(dataStan, "subModel"),
+    prior = c("normal", "t-student"),
+    priorRE = c("default", "gamma", "invWishart", "LKJ"),
+    generateQuantities = FALSE,
+    ...
+) {
+  prior <- match.arg(prior)
+  priorRE <- match.arg(priorRE)
+  subModel <- match.arg(subModel, c("both", "choice", "rate"))
+
+  Q <- ifelse(
+    !is.null(dataStan[["stan"]][["Qrate"]]),
+    dataStan[["stan"]][["Qrate"]],
+    0L
+  ) +
+    ifelse(
+      !is.null(dataStan[["stan"]][["Qchoice"]]),
+      dataStan[["stan"]][["Qchoice"]],
+      0L
+    )
+
+  typeQ <- ifelse(Q > 1, "Qm", "Q1")
+
+  parmsFE <- do.call(
+    utils::getS3method("ReadParms", subModel),
+    list(x = prior)
+  )
+  parmsRE <- c(
+    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
+    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
+  )
+  stanCode <- c(
+    "data {",
+    ReadStanChunkType(subModel, "DN", "data"),
+    "  int A; // number of senders",
+    ReadStanChunkType(subModel, "DNRE", "data"),
+    "}\nparameters {",
+    parmsFE[["pm"]],
+    parmsRE[["pm"]],
+    "}",
+    parmsRE[["tp"]],
+    "model {\n  //priors",
+    parmsFE[["pr"]],
+    parmsRE[["pr"]],
+    "  // loglikelihood",
+    parmsRE[["ll"]],
+    "}",
+    if (generateQuantities) parmsRE[["gq"]]
+  )
+
+  cmdstanr::write_stan_file(code = stanCode)
+}
 
 ReadStanChunk <- function(prefix, type, suffix, isType = TRUE) {
   fileChunk <- paste0(
@@ -267,6 +267,10 @@ SampleData <- function(
     fractionChoiceSet = 0.1, methodChoiceSet = c("srswor", "systematic"),
     fractionEvents = 1, methodEvents = c("systematic", "srswor")
 ) {
+  
+  methodChoiceSet <- match.arg(methodChoiceSet, c("srswor", "systematic"))
+  methodEvents <- match.arg(methodEvents, c("systematic", "srswor"))
+  
   stopifnot(
     inherits(data, "goldfish.latent.data"),
     is.numeric(fractionChoiceSet) &&
@@ -279,15 +283,13 @@ SampleData <- function(
     is.character(methodEvents) && length(methodEvents) == 1
   )
 
-  methodChoiceSet <- match.arg(methodChoiceSet, c("srswor", "systematic"))
-  methodEvents <- match.arg(methodEvents, c("systematic", "srswor"))
-
   dataStan <- data$dataStan
   model <- attr(data, "model")
   subModel <- attr(data, "subModel")
   CollapseSample <- function(x) Reduce(f = rbind, x = x)
 
-  if (model %in% c("DNHMM", "DNCHMM") && subModel %in% c("both", "rate")) {
+  if (model %in% c("DNHMM", "DNCHMM", "DyNAMRE") &&
+      subModel %in% c("both", "rate")) {
     dataStan <- within(
       dataStan,
       {
@@ -349,7 +351,8 @@ SampleData <- function(
       })
   }
 
-  if (model %in% c("DNHMM", "DNCHMM") && subModel %in% c("both", "choice")) {
+  if (model %in% c("DNHMM", "DNCHMM", "DyNAMRE") &&
+      subModel %in% c("both", "choice")) {
     dataStan <- within(
       dataStan,
       {

@@ -5,7 +5,7 @@
 // tp
 transformed parameters {
   // sigma in original bugs
-  real<lower=0> sigmasq = square(sigmasq); // standard deviation of random effect
+  real<lower=0> sigmasq = square(sigma); // standard deviation of random effect
 }
 
 // pr:inv-gamma

@@ -1,9 +1,7 @@
 //
-// MCM_RE1.stan
+// DNRE1_choice.stan
 // Multinomial choice model with P fixed effect covariates and one random effect
 //
-// Update to avoid warnings from deprecated syntax
-// non centered parametrization
 //
 // Subset the vector of probs instead of dot product
 // Change to a full mixed formulation,
@@ -16,54 +14,77 @@
 //
 
 data {
-  int N; // number of events * choice set (actors - 1)
-  int T; // number of events
-  int A; // number of actors
-  int P; // number of covariates
+  int Nchoice; // number of events * present actors
+  int Tchoice; // number of events
+  int Pchoice; // number of covariates
 
   // covariates, decisions * choice set,
   //   fixed effects (include random effect fix part)
-  matrix[N, P] X;
-  vector[N] Z; // covariate, decisions * choice set, random effect
-
-  array[T] int<lower = 1, upper = N> chose; // position receiver chose
-
-  array[N] int<lower = 1, upper = A> sender; // index for actors
+  array[Tchoice] int<lower = 1, upper = Nchoice> choseChoice; // position receiver
+  matrix[Nchoice, Pchoice] Xchoice;
 
   // the starting and ending index observation for each event
-  array[T] int<lower = 1, upper = N> start;
-  array[T] int<lower = 1, upper = N> end;
+  array[Tchoice] int<lower = 1, upper = Nchoice> startChoice;
+  array[Tchoice] int<lower = 1, upper = Nchoice> endChoice;
+
+  int A; // number of actors/groups
+
+  // int Qchoice; // number of random effects
+  // matrix[Nchoice, Qchoice] Zchoice;
+  vector[Nchoice] Zchoice;
+
+  array[Nchoice] int<lower = 1, upper = A> senderChoice;
+
+
 }
 parameters {
-  vector[P] beta; // fixed effects, includes fixed part random effect
-  //real<lower = 0> sigma;
-  real<lower=0> sigmasq; // variance of random effect
-  vector[A] gamma_raw; // individual uncentered random effects
+  vector[Pchoice] betaChoice; // fixed effects, includes average random effect
+  // individual random effects
+  real<lower=0> sigma; // variance random-effect
+  vector[A] gamma_raw; // actor uncentered random-effect
 }
-transformed parameters {
-  // sigma in original bugs
-  real<lower=0> sigma;
-  sigma = sqrt(sigmasq); // standard deviation of random effect
-}
+// transformed parameters {
+  // // sigma in original bugs
+  // real<lower=0> sigmasq = square(sigma); // standard deviation of random effect
+// }
 model {
-  // create a temporary holding vector
-  vector[N] xb;
-
-  // priors on the parameters
-  target += inv_gamma_lpdf(sigmasq | 1, 1);
-  //sigma ~ cauchy(0, 5);
-  target += normal_lpdf(beta | 0, 4);
-  //gamma ~ normal(alpha, sigma);
+  // normal prior beta 
+  target += std_normal_lpdf(betaChoice);
+  
+  // priors variance random effects
+  target += exponential_lpdf(sigma | 1);
+  
+  // prior random effects
   target += std_normal_lpdf(gamma_raw);
-
-  // log probabilities of each choice in the dataset
+  
+  // ll
+  
+  // create a temporary holding vector
+  vector[Nchoice] xbChoice; 
   {
     vector[A] gamma;
     gamma = sigma * gamma_raw;
 
-    xb = X * beta + Z .* gamma[sender];
+    xbChoice = Xchoice * betaChoice +
+      to_vector(col(Zchoice, 1)) .* gamma[senderChoice]; 
   }
 
-  for(t in 1:T)
-    target  += xb[chose[t]] - log_sum_exp(xb[start[t]:end[t]]);
+  for (t in 1:Tchoice)
+    target  += xbChoice[choseChoice[t]] -
+      log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
+}
+generated quantities {
+  vector[Tchoice] logLik; 
+  {
+    vector[Nchoice] xbChoice; 
+    vector[A] gamma;
+    gamma = sigma * gamma_raw;
+
+    xbChoice = Xchoice * betaChoice +
+      to_vector(col(Zchoice, 1)) .* gamma[senderChoice]; 
+
+    for (t in 1:Tchoice)
+      logLik[t] = xbChoice[choseChoice[t]] -
+        log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
+  }
 }
