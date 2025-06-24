@@ -18,7 +18,6 @@
 #' dynamic network actor models.
 #' \emph{Network Science}. \doi{10.1017/nws.2022.37}
 #' @name goldfish.latent-package
-#' @docType package
 #' @aliases goldfish.latent goldfish.latent-package
 ## usethis namespace: end
 NULL

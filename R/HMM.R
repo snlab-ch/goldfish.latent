@@ -5,14 +5,13 @@
 #' Additional information of the effects used during preprocessing is added to
 #' the return object.
 #'
-#' @param rateEffects a `formula` specification as in [goldfish::estimate()].
-#' @param choiceEffects a `formula` specification as in [goldfish::estimate()].
-#' @param model Current version only support `"DyNAM"` model, enhancements
-#' on the code would allow to use `"REM"` model too.
+#' @param rate_effects a `formula` specification as in [goldfish::estimate()].
+#' @param choice_effects a `formula` specification as in [goldfish::estimate()].
+#' @param model Current version only support `"DyNAM"` model.
 #' @param scale logical value. Whether to standardize the effect stats at
 #' the end.
-#' @param envir an `environment` where the formula objects are available.
-#' @inheritParams CreateData
+#' @param data a `data.goldfish` object. Output of [goldfish::make_data()].
+#' @inheritParams make_data_re
 #'
 #' @return a list with the following components.
 #' \describe{
@@ -25,60 +24,67 @@
 #'   \item{scale}{a list with the statistics used for the standardization when
 #'   `scale = TRUE`.}
 #' }
+#' @importFrom goldfish set_preprocessing_opt
 #' @export
 #'
 #' @examples
 #' \donttest{
 #' library(goldfish)
 #' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
-#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+#'   link_events(change_event = calls, nodes = actors)
+#' callsDependent <- define_dependent_events(
+#'   events = calls, nodes = actors, default_network = callNetwork
 #' )
-#' data2stan <- CreateDataHMM(
-#'   rateEffects = callsDependent ~ indeg + outdeg,
-#'   choiceEffects = callsDependent ~ recip + trans
+#' socialEvolutionData <- make_data(callsDependent)
+#' data2stan <- make_data_hmm(
+#'   rate_effects = callsDependent ~ indeg + outdeg,
+#'   choice_effects = callsDependent ~ recip + trans,
+#'   data = socialEvolutionData
 #' )
 #' }
-CreateDataHMM <- function(
-    rateEffects,
-    choiceEffects,
-    model = c("DyNAM", "REM"),
-    kStates = 3,
-    supportConstraint = NULL,
-    preprocessArgs = NULL,
-    scale = FALSE,
+make_data_hmm <- function(
+    rate_effects,
+    choice_effects,
+    model = c("DyNAM"),
+    k_states = 3,
+    support_constraint = NULL,
+    control_preprocessing = NULL,
+    scale = TRUE,
     progress = getOption("progress"),
-    envir = new.env()) {
+    data = NULL) {
   ### 0. check parameters----
   model <- match.arg(model)
 
   stopifnot(
     is.null(progress) || inherits(progress, "logical"),
-    is.null(preprocessArgs) ||
-      inherits(preprocessArgs, "list"),
-    is.null(rateEffects) || inherits(rateEffects, "formula"),
-    is.null(choiceEffects) || inherits(choiceEffects, "formula"),
-    is.null(supportConstraint) ||
-      inherits(supportConstraint, "formula"),
-    is.numeric(kStates) && length(kStates) == 1 && kStates >= 2
+    is.null(control_preprocessing) ||
+      inherits(control_preprocessing, "preprocessing_opt.goldfish"),
+    is.null(rate_effects) || inherits(rate_effects, "formula"),
+    is.null(choice_effects) || inherits(choice_effects, "formula"),
+    is.null(support_constraint) ||
+      inherits(support_constraint, "formula"),
+    is.numeric(k_states) && length(k_states) == 1 && k_states >= 2
   )
 
   # setting initial values of some arguments
   if (is.null(progress)) progress <- FALSE
 
-  if (!is.null(rateEffects) && !is.null(choiceEffects)) {
-    subType <- "both"
+  if (is.null(control_preprocessing)) {
+    control_preprocessing <- goldfish::set_preprocessing_opt()
+  }
+
+  if (!is.null(rate_effects) && !is.null(choice_effects)) {
+    sub_type <- "both"
 
 
-    if (as.character(choiceEffects[[2]]) != as.character(rateEffects[[2]])) {
+    if (as.character(choice_effects[[2]]) != as.character(rate_effects[[2]])) {
       stop("dependent event network needs to be the same for both formulas")
     }
-  } else if (!is.null(rateEffects)) {
-    subType <- "rate"
-  } else if (!is.null(choiceEffects)) {
-    subType <- "choice"
+  } else if (!is.null(rate_effects)) {
+    sub_type <- "rate"
+  } else if (!is.null(choice_effects)) {
+    sub_type <- "choice"
   } else {
     stop(
       dQuote("rateEffects"), " and ", dQuote("choiceEffects"),
@@ -86,15 +92,15 @@ CreateDataHMM <- function(
     )
   }
   # process data
-  scaleStats <- if (scale) list() else NULL
-  if (!is.null(rateEffects)) {
-    dataProcessedRate <- GatherPreprocessing(
-      formula = rateEffects,
+  scale_stats <- if (scale) list() else NULL
+  if (!is.null(rate_effects)) {
+    data_processed_rate <- gather_model_data(
+      formula = rate_effects,
       model = model,
-      subModel = "rate",
-      preprocessArgs = preprocessArgs,
+      sub_model = "rate",
+      control_preprocessing = control_preprocessing,
       progress = progress,
-      envir = new.env(parent = envir)
+      data = data
     )
 
     # nEvents <- length(dataProcessedRate$selected)
@@ -110,7 +116,7 @@ CreateDataHMM <- function(
     #   simplify2array()
 
 
-    dataStanRate <- within(dataProcessedRate, {
+    data_stan_rate <- within(data_processed_rate, {
       Trate <- length(n_candidates)
       Nrate <- nrow(stat_all_events)
       Prate <- ncol(stat_all_events)
@@ -120,7 +126,8 @@ CreateDataHMM <- function(
       Xrate <- setNames(stat_all_events, namesEffects)
       if (hasIntercept) {
         choseRate <- selected[, 1] + (startRate - 1) * isDependent
-        offsetInt <- log(Trate / (sum(timespan) * mean(n_candidates))) # mean(timespan)
+        # mean(timespan)
+        offsetInt <- log(Trate / (sum(timespan) * mean(n_candidates))) 
       } else {
         choseRate <- selected[, 1] + (startRate - 1)
       }
@@ -138,12 +145,12 @@ CreateDataHMM <- function(
           dataStanRate$Xrate
         }
       )
-      scaleStats[["rate"]] <- attributes(Xrate)
+      scale_stats[["rate"]] <- attributes(Xrate)
 
-      if (dataStanRate$hasIntercept) {
-        dataStanRate$Xrate[, -1] <- Xrate[, ]
+      if (data_stan_rate$hasIntercept) {
+        data_stan_rate$Xrate[, -1] <- Xrate[, ]
       } else {
-        dataStanRate$Xrate <- Xrate[, ]
+        data_stan_rate$Xrate <- Xrate[, ]
       }
     }
     # table(idxEvents[1, ] == dataStanRate$startRate)
@@ -151,24 +158,24 @@ CreateDataHMM <- function(
     # chose <- which(expandedDF$selected)
     # table(chose == dataStanRate$choseRate[dataStanRate$isDependent])
   } else {
-    dataProcessedRate <- dataStanRate <- NULL
+    data_processed_rate <- data_stan_rate <- NULL
   }
 
-  if (!is.null(choiceEffects)) {
-    feTerms <- terms(choiceEffects)
-    cstrTerms <- if (!is.null(supportConstraint)) {
-      terms(supportConstraint)
+  if (!is.null(choice_effects)) {
+    feTerms <- terms(choice_effects)
+    cstrTerms <- if (!is.null(support_constraint)) {
+      terms(support_constraint)
     } else {
       NULL
     }
 
     if (length(attr(cstrTerms, "term.labels")) > 1) {
-      stop(dQuote("supportConstraint"), " argument only works for one effect.")
+      stop(dQuote("support_constraint"), " argument only works for one effect.")
     }
 
     if (any(attr(feTerms, "order") != 1)) {
       stop(
-        dQuote("choiceEffects"),
+        dQuote("choice_effects"),
         "formula argument doesn't support interactions yet"
       )
     }
@@ -180,47 +187,47 @@ CreateDataHMM <- function(
 
     formulaDyNAM <- reformulate(
       termsDyNAM,
-      response = as.character(choiceEffects[[2]])
+      response = as.character(choice_effects[[2]])
     )
 
-    dataProcessedChoice <- GatherPreprocessing(
+    data_processed_choice <- gather_model_data(
       formula = formulaDyNAM,
       model = model,
-      subModel = "choice",
-      preprocessArgs = preprocessArgs,
+      sub_model = "choice",
+      preprocess_args = preprocess_args,
       progress = progress,
-      envir = new.env(parent = envir)
+      data = data
     )
 
-    nEvents <- length(dataProcessedChoice$sender)
+    nEvents <- length(data_processed_choice$sender)
 
     namesEffects <- setNames(
-      gsub("\\$", "Of", dataProcessedChoice$namesEffects),
+      gsub("\\$", "Of", data_processed_choice$namesEffects),
       termsDyNAM
     )
 
     expandedDF <- cbind(
       setNames(
-        as.data.frame(dataProcessedChoice$stat_all_events),
+        as.data.frame(data_processed_choice$stat_all_events),
         namesEffects
       ),
       data.frame(
-        event = rep(seq_len(nEvents), dataProcessedChoice$n_candidates),
-        selected = sequence(dataProcessedChoice$n_candidates) ==
-          rep(dataProcessedChoice$selected, dataProcessedChoice$n_candidates)
+        event = rep(seq_len(nEvents), data_processed_choice$n_candidates),
+        selected = sequence(data_processed_choice$n_candidates) ==
+          rep(data_processed_choice$selected, data_processed_choice$n_candidates)
       )
     )
 
     # subset if constraint
-    if (!is.null(supportConstraint)) {
+    if (!is.null(support_constraint)) {
       cstrName <- namesEffects[attr(cstrTerms, "term.labels")]
       keep <- expandedDF[, cstrName] == 1
       expandedDF <- expandedDF[keep, !names(expandedDF) %in% cstrName]
       effectDescription <-
-        dataProcessedChoice$effectDescription[!namesEffects %in% cstrName, ]
+        data_processed_choice$effectDescription[!namesEffects %in% cstrName, ]
       namesEffects <- namesEffects[!namesEffects %in% cstrName]
     } else {
-      effectDescription <- dataProcessedChoice$effectDescription
+      effectDescription <- data_processed_choice$effectDescription
     }
 
     # create objects for Stan
@@ -231,7 +238,7 @@ CreateDataHMM <- function(
 
     Xmat <- as.matrix(expandedDF[, namesEffects])
 
-    dataStanChoice <- list(
+    data_stan_choice <- list(
       Tchoice = nEvents,
       Nchoice = nTotal,
       Pchoice = ncol(Xmat),
@@ -243,57 +250,57 @@ CreateDataHMM <- function(
 
     if (scale) {
       Xchoice <- scale(Xmat)
-      scaleStats[["choice"]] <- attributes(Xchoice)
+      scale_stats[["choice"]] <- attributes(Xchoice)
 
-      dataStanChoice$Xchoice <- Xchoice[, ]
+      data_stan_choice$Xchoice <- Xchoice[, ]
     }
   } else {
     namesEffects <- effectDescription <- NULL
   }
 
-  dataStan <- c(
-    if (!is.null(rateEffects)) dataStanRate,
-    if (!is.null(choiceEffects)) dataStanChoice,
+  data_stan <- c(
+    if (!is.null(rate_effects)) data_stan_rate,
+    if (!is.null(choice_effects)) data_stan_choice,
     list(
-      kS = kStates,
-      alpha = c(floor((kStates - 1) / (1 - 0.8)), 1)
+      kS = k_states,
+      alpha = c(floor((k_states - 1) / (1 - 0.8)), 1)
     )
   )
 
   if (!is.null(effectDescription) &
-    !is.null(dataProcessedRate$effectDescription)) {
+    !is.null(data_processed_rate$effectDescription)) {
     if (!setequal(
       colnames(effectDescription),
-      colnames(dataProcessedRate$effectDescription)
+      colnames(data_processed_rate$effectDescription)
     )) {
-      dataProcessedRate$effectDescription <- AddColumns(
-        dataProcessedRate$effectDescription,
+      data_processed_rate$effectDescription <- AddColumns(
+        data_processed_rate$effectDescription,
         effectDescription
       )
 
       effectDescription <- AddColumns(
         effectDescription,
-        dataProcessedRate$effectDescription
+        data_processed_rate$effectDescription
       )
     }
   }
 
   return(structure(
     list(
-      dataStan = dataStan,
+      data_stan = data_stan,
       namesEffects = c(
-        dataProcessedRate$namesEffects,
+        data_processed_rate$namesEffects,
         namesEffects
       ),
       effectDescription = rbind(
-        dataProcessedRate$effectDescription,
+        data_processed_rate$effectDescription,
         effectDescription
       ),
-      scaleStats = scaleStats
+      scale_stats = scale_stats
     ),
     class = "goldfish.latent.data",
     model = "DNHMM",
-    subModel = subType
+    subModel = sub_type
   ))
 }
 
@@ -306,21 +313,21 @@ CreateDataHMM <- function(
 #' probabilities `smoothProbsSt = "marginal"` or taking into account the
 #' conditional probability given the next state  `smoothProbsSt = "joint"` as
 #' implemented in Stan `hmm_latent_rng()`.
-#' @param data2Stan a object of class `"goldfish.latent.data"` outcome of a call
-#' to [CreateDataHMM()].
-#' @param cmdstanSamples a object of class `"CmdStanMCMC"` with the posterior
-#' samples of a HMM from the `data2Stan`.
-#' @param kStates an integer with the number of states used to get samples
-#' from the posterior distribution in `cmdstanSamples`.
+#' @param data_to_stan a object of class `"goldfish.latent.data"` outcome of
+#' a call to [make_data_hmm()].
+#' @param cmdstan_samples a object of class `"CmdStanMCMC"` with the posterior
+#' samples of a HMM from the `data_to_stan`.
+#' @param k_states an integer with the number of states used to get samples
+#' from the posterior distribution in `cmdstan_samples`.
 #' @param type a character specifying which algorithm to use for the post
 #' processing of the posterior distribution samples.
-#' @param smoothProbsSt a character specifying the way that state sample path
+#' @param smooth_probs_states a character specifying the way that state sample path
 #' are drawn either using the smoothed probabilities `"marginal"` or
 #' conditioning of the next sample state `"joint"`.
 #' Only used when `type = "both"` or `type = "smoothProbs"`.
 #' @param cl an optional `cluster` object to parallelize the
 #' post-processing
-#' @param nnodes an integer specifying the number of nodes to use in the
+#' @param n_nodes an integer specifying the number of nodes to use in the
 #' parallelization.
 #' @return a list with the most probable path when Viterbi algorithm is used
 #' and/or the smoothed probabilities and sample paths when the
@@ -331,65 +338,67 @@ CreateDataHMM <- function(
 #' \donttest{
 #' library(goldfish)
 #' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
-#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+#'   link_events(change_event = calls, nodes = actors)
+#' callsDependent <- define_dependent_events(
+#'   events = calls, nodes = actors, default_network = call_network
 #' )
-#' data2stan <- CreateDataHMM(
-#'   rateEffects = callsDependent ~ indeg + outdeg,
-#'   choiceEffects = NULL
+#' socialEvolutionData <- make_data(callsDependent)
+#' data_to_stan <- make_data_hmm(
+#'   rate_effects = callsDependent ~ indeg + outdeg,
+#'   choice_effects = NULL,
+#'   data = socialEvolutionData
 #' )
 #'
-#' postProcess <- HMMPostProcessing(data2stan, cmdstanSamples)
+#' postProcess <- hmm_post_processing(data_to_stan, cmdstan_samples)
 #' }
-HMMPostProcessing <- function(
-    dataStan, cmdstanSamples,
-    kStates = dataStan$dataStan$kS,
+hmm_post_processing <- function(
+    data_to_stan, cmdstan_samples,
+    k_states = data_to_stan$data_stan$kS,
     type = c("both", "viterbi", "smoothProbs"),
-    smoothProbsSt = c("joint", "marginal", "none"),
-    cl = NULL, nnodes = parallel::detectCores() - 1L) {
+    smooth_probs_states = c("joint", "marginal", "none"),
+    cl = NULL, n_nodes = parallel::detectCores() - 1L) {
   type <- match.arg(type)
-  smoothProbsSt <- match.arg(smoothProbsSt)
+  smooth_probs_states <- match.arg(smooth_probs_states)
 
-  model <- attr(dataStan, "model")
+  model <- attr(data_to_stan, "model")
   stopifnot(
-    inherits(cmdstanSamples, "CmdStanMCMC"),
-    inherits(dataStan, "goldfish.latent.data"),
-    is.numeric(kStates) && length(kStates) == 1 && kStates >= 2,
+    inherits(cmdstan_samples, "CmdStanMCMC"),
+    inherits(data_to_stan, "goldfish.latent.data"),
+    is.numeric(k_states) && length(k_states) == 1 && k_states >= 2,
     model %in% c("DNHMM", "DNCHMM", "DNCHMMRE")
   )
 
-  subModel <- attr(dataStan, "subModel")
+  sub_model <- attr(data_to_stan, "subModel")
 
   # extract draws and reformat for posterior computations
   typeOutput <- ifelse(is.null(cl), "draws_matrix", "draws_array")
   typeOutput <- "draws_matrix"  # change parallelization
 
-  drawsObject <- HMMDraws2LS(
-    dataStan, cmdstanSamples,
-    kStates = kStates, type = typeOutput
+  drawsObject <- hmm_draws_to_label_switching(
+    data_to_stan, cmdstan_samples,
+    k_states = k_states, type = typeOutput
   )
 
-  dataStan <- dataStan$dataStan
+  data_to_stan <- data_to_stan$data_stan
 
   if (is.null(cl)) {
     output <- do.call(
       switch(
         model,
-         "DNHMM" = "HMMPPperDraws",
-         "DNCHMM" = "CHMMPPperDraws",
-         "DNCHMMRE" = "CHMMREPPperDraws"
+         "DNHMM" = "hmm_pp_per_draws",
+         "DNCHMM" = "chmm_pp_per_draws",
+         "DNCHMMRE" = "chmm_re_pp_per_draws"
       ),
       args = list(
-        chainIter = NULL,
-        drawsObject = drawsObject,
-        dataStan = dataStan,
+        chain_iter = NULL,
+        draws_object = drawsObject,
+        data_stan = data_to_stan,
         model = model,
-        subModel = subModel,
-        kStates = kStates,
+        sub_model = sub_model,
+        k_states = k_states,
         type = type,
-        smoothProbsSt = smoothProbsSt
+        smooth_probs_state = smooth_probs_state
       )
     )
   } else {
@@ -408,178 +417,178 @@ HMMPostProcessing <- function(
       seq_len(nnodes * kFactor),
       fun = switch(
         model,
-         "DNHMM" = HMMPPperDraws,
-         "DNCHMM" = CHMMPPperDraws,
-         "DNCHMMRE" = CHMMREPPperDraws
+         "DNHMM" = hmm_pp_per_draws,
+         "DNCHMM" = chmm_pp_per_draws,
+         "DNCHMMRE" = chmm_re_pp_per_draws
       ),
-      drawsObject = drawsObject,
-      dataStan = dataStan,
+      draws_object = drawsObject,
+      data_stan = data_to_stan,
       model = model,
-      subModel = subModel,
-      kStates = kStates,
+      sub_model = sub_model,
+      k_states = k_states,
       type = type,
-      smoothProbsSt = smoothProbsSt,
+      smooth_probs_st = smooth_probs_st,
       nnodes = nnodes,
-      kFactor = kFactor
+      k_factor = k_factor
     ) |>
-      bindPPHMM(type = type, smoothProbsSt = smoothProbsSt)
+      bind_pp_hmm(type = type, smooth_probs_state = smooth_probs_state)
   }
 
   return(output)
 }
 
-HMMPPperDraws <- function(
-    chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt, nnodes, kFactor) {
+hmm_pp_per_draws <- function(
+    chain_iter, draws_object, data_stan, model, sub_model,
+    k_states, type, smooth_probs_states, n_nodes, k_factor) {
   # init output
   output <- list()
 
-  draws <- drawsObject$draws
-  idxTheta <- drawsObject$idxTheta
-  idxEmission <- drawsObject$idxEmission
-  idxBetaChoice <- drawsObject$idxBetaChoice
-  idxBetaRate <- drawsObject$idxBetaRate
+  draws <- draws_object$draws
+  idx_theta <- draws_object$idxTheta
+  idx_emission <- draws_object$idxEmission
+  idx_beta_choice <- draws_object$idxBetaChoice
+  idx_beta_rate <- draws_object$idxBetaRate
 
-  if (!is.null(chainIter)) {
-    splitDraws <- parallel::splitIndices(nrow(draws), nnodes * kFactor)
-    draws <- draws[splitDraws[[chainIter]], ]
+  if (!is.null(chain_iter)) {
+    split_draws <- parallel::splitIndices(nrow(draws), n_nodes * k_factor)
+    draws <- draws[split_draws[[chain_iter]], ]
   }
 
 
-  nDraws <- nrow(draws)
+  n_draws <- nrow(draws)
 
   # define sizes
-  nEvents <- ifelse(subModel %in% c("both", "rate"), "Trate", "Tchoice")
-  nEvents <- dataStan[[nEvents]]
+  n_events <- ifelse(sub_model %in% c("both", "rate"), "Trate", "Tchoice")
+  n_events <- data_stan[[n_events]]
 
-  isRes <- !is.null(dataStan$Nres)
-  TT <- ifelse(isRes, dataStan$Nres, nEvents)
+  is_res <- !is.null(data_stan$Nres)
+  TT <- ifelse(is_res, data_stan$Nres, n_events)
 
 
-  if (subModel %in% c("choice")) {
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+  if (sub_model %in% c("choice")) {
+    ll_event_state <- array(0, dim = c(n_events, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xb <- tcrossprod(dataStan$Xchoice, draws[, idxBetaChoice[kS, ]])
+    for (k_s in seq_len(k_states)) {
+      xb <- tcrossprod(data_stan$Xchoice, draws[, idx_beta_choice[k_s, ]])
 
-      for (event in seq_len(nEvents)) {
-        llEventState[event, , kS] <-
-          xb[dataStan$choseChoice[event], ] -
+      for (event in seq_len(n_events)) {
+        ll_event_state[event, , k_s] <-
+          xb[data_stan$choseChoice[event], ] -
           colLogSumExps(
             xb,
             rows = seq(
-              dataStan$startChoice[event],
-              dataStan$endChoice[event]
+              data_stan$startChoice[event],
+              data_stan$endChoice[event]
             )
           )
       }
     }
   }
 
-  if (subModel %in% c("rate")) {
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+  if (sub_model %in% c("rate")) {
+    ll_event_state <- array(0, dim = c(n_events, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xb <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
-        dataStan$offsetInt
+    for (k_s in seq_len(k_states)) {
+      xb <- tcrossprod(data_stan$Xrate, draws[, idx_beta_rate[k_s, ]]) +
+        data_stan$offsetInt
 
-      for (event in seq_len(nEvents)) {
-        llEventState[event, , kS] <-
-          ifelse(dataStan$isDependent[event],
-            xb[dataStan$choseRate[event], ], 0
+      for (event in seq_len(n_events)) {
+        ll_event_state[event, , k_s] <-
+          ifelse(data_stan$isDependent[event],
+            xb[data_stan$choseRate[event], ], 0
           ) -
-          dataStan$timespan[event] * exp(colLogSumExps(
+          data_stan$timespan[event] * exp(colLogSumExps(
             xb,
             rows = seq(
-              dataStan$startRate[event],
-              dataStan$endRate[event]
+              data_stan$startRate[event],
+              data_stan$endRate[event]
             )
           ))
       }
     }
   }
 
-  if (subModel %in% c("both")) {
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+  if (sub_model %in% c("both")) {
+    ll_event_state <- array(0, dim = c(n_events, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xbR <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
-        dataStan$offsetInt
-      xbC <- tcrossprod(dataStan$Xchoice, draws[, idxBetaChoice[kS, ]])
+    for (k_s in seq_len(k_states)) {
+      xb_r <- tcrossprod(data_stan$Xrate, draws[, idx_beta_rate[k_s, ]]) +
+        data_stan$offsetInt
+      xb_c <- tcrossprod(data_stan$Xchoice, draws[, idx_beta_choice[k_s, ]])
 
-      eventChoice <- 1L
-      for (event in seq_len(nEvents)) {
-        loglik <- -dataStan$timespan[event] * exp(colLogSumExps(
-          xbR,
+      event_choice <- 1L
+      for (event in seq_len(n_events)) {
+        loglik <- -data_stan$timespan[event] * exp(colLogSumExps(
+          xb_r,
           rows = seq(
-            dataStan$startRate[event],
-            dataStan$endRate[event]
+            data_stan$startRate[event],
+            data_stan$endRate[event]
           )
         ))
-        if (dataStan$isDependent[event]) {
-          loglik <- loglik + xbR[dataStan$choseRate[event], ] +
-            xbC[dataStan$choseChoice[eventChoice], ] -
+        if (data_stan$isDependent[event]) {
+          loglik <- loglik + xb_r[data_stan$choseRate[event], ] +
+            xb_c[data_stan$choseChoice[event_choice], ] -
             colLogSumExps(
-              xbC,
+              xb_c,
               rows = seq(
-                dataStan$startChoice[eventChoice],
-                dataStan$endChoice[eventChoice]
+                data_stan$startChoice[event_choice],
+                data_stan$endChoice[event_choice]
               )
             )
-          eventChoice <- eventChoice + 1L
+          event_choice <- event_choice + 1L
         }
 
-        llEventState[event, , kS] <- loglik
+        ll_event_state[event, , k_s] <- loglik
       }
     }
   }
 
-  if (isRes) {
-    llEventState <- array(apply(
-      llEventState,
+  if (is_res) {
+    ll_event_state <- array(apply(
+      ll_event_state,
       3,
       \(x) lapply(
         seq_len(TT),
         \(y) colSums2(
           x,
-          rows = seq(dataStan$resA[y], dataStan$resA[y + 1] - 1)
+          rows = seq(data_stan$resA[y], data_stan$resA[y + 1] - 1)
         )
       ) |> (\(x) Reduce(rbind, x = x))()
-    ), dim = c(TT, nDraws, kStates))
+    ), dim = c(TT, n_draws, k_states))
   }
 
   if (type %in% c("both", "viterbi")) {
     # back-pointer to the most likely previous state on the most probable path
-    bpointer <- array(0, dim = c(TT, kStates, nDraws))
+    bpointer <- array(0, dim = c(TT, k_states, n_draws))
     # max prob for the sequence up to t that ends with an emission from state k
-    delta <- array(0, dim = c(TT, kStates, nDraws))
+    delta <- array(0, dim = c(TT, k_states, n_draws))
 
     # forward past computing most likely state from previous state
     # first observation: p(y_1| z_1) * p(z_1) (emission prob)
-    delta[1, , ] <- t(log(draws[, idxEmission]) + llEventState[1, , ])
+    delta[1, , ] <- t(log(draws[, idx_emission]) + ll_event_state[1, , ])
 
     for (tt in seq(2, TT)) {
-      prevDelta <- t(delta[tt - 1, , ])
-      for (k in seq_len(kStates)) {
-        T_1_xj <- prevDelta + log(draws[, idxTheta[, k]]) +
-          llEventState[tt, , k]
+      prev_delta <- t(delta[tt - 1, , ])
+      for (k in seq_len(k_states)) {
+        t_1_xj <- prev_delta + log(draws[, idx_theta[, k]]) +
+          ll_event_state[tt, , k]
 
-        delta[tt, k, ] <- apply(T_1_xj, 1, max)
-        bpointer[tt, k, ] <- apply(T_1_xj, 1, which.max)
+        delta[tt, k, ] <- apply(t_1_xj, 1, max)
+        bpointer[tt, k, ] <- apply(t_1_xj, 1, which.max)
       }
     }
 
     # backward past
     z <- array(0L,
-      dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT))
+      dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT))
     )
 
     z[, TT] <- apply(delta[TT, , ], 2, which.max)
 
     for (tt in seq(TT - 1, 1)) {
       z[, tt] <- sapply(
-        seq_len(nDraws),
+        seq_len(n_draws),
         \(x) bpointer[tt + 1, z[x, tt + 1], x]
       )
     }
@@ -590,14 +599,16 @@ HMMPPperDraws <- function(
   if (type %in% c("both", "smoothProbs")) {
     p <- array(
       0,
-      dim = c(nDraws, TT, kStates),
+      dim = c(n_draws, TT, k_states),
       dimnames = list(
-        draws = seq_len(nDraws), time = seq_len(TT),
-        states = seq_len(kStates)
+        draws = seq_len(n_draws), time = seq_len(TT),
+        states = seq_len(k_states)
       )
     )
 
-    if (smoothProbsSt != "none") zSample <- array(0L, dim = c(nDraws, TT))
+    if (smooth_probs_states != "none") {
+      z_sample <- array(0L, dim = c(n_draws, TT))
+    }
 
     # forward -- filtering: alpha [tt, k] with running normalization
     #  11.2.2, Finite Mixture and Markov Switching models,
@@ -605,7 +616,7 @@ HMMPPperDraws <- function(
 
     # # filter at first observation:
     # # p(S_1 = k|y_0) = p(y_1| S_1) * p(S_1); (emission prob)
-    p[, 1, ] <- log(draws[, idxEmission]) + llEventState[1, , ]
+    p[, 1, ] <- log(draws[, idx_emission]) + ll_event_state[1, , ]
     # In Frühwirth: normalization is over llEventState, here follow Stan
     p[, 1, ] <- sweep(p[, 1, ], 1, apply(p[, 1, ], 1, max))
     # not need to convert to prob
@@ -614,24 +625,24 @@ HMMPPperDraws <- function(
     for (tt in seq(2, TT)) {
       # # one-step ahead prediction of S_t:
       # # p(S_t = k | y_{t-1}) = \sum_l \theta_{lk} p(S_{t-1} = l| y_{t-1})
-      for (k in seq_len(kStates)) {
+      for (k in seq_len(k_states)) {
         p[, tt, k] <- rowLogSumExps(
-          log(draws[, idxTheta[, k]]) + p[, tt - 1, ]
+          log(draws[, idx_theta[, k]]) + p[, tt - 1, ]
         ) +
           # # filter for S_t: p(S_t = k| y_t) =
           # #  p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) /
           # #  \sum_k p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) ; unnormalize enough
-          llEventState[tt, , k]
+          ll_event_state[tt, , k]
       }
     }
 
     # Normalize last value, already smooth distribution
     p[, TT, ] <- exp(sweep(p[, TT, ], 1, rowLogSumExps(p[, TT, ])))
 
-    if (smoothProbsSt != "none") { # sample last Hidden State (HS)
-      zSample[, TT] <- apply(
+    if (smooth_probs_states != "none") { # sample last Hidden State (HS)
+      z_sample[, TT] <- apply(
         p[, TT, ], 1,
-        \(x) sample.int(kStates, 1, prob = x)
+        \(x) sample.int(k_states, 1, prob = x)
       )
     }
 
@@ -641,48 +652,48 @@ HMMPPperDraws <- function(
     #
 
     # initial ending state ass as given (uniform)
-    logBeta <- array(0, dim = c(nDraws, kStates))
+    log_beta <- array(0, dim = c(n_draws, k_states))
 
     for (tt in seq(TT - 1, 1)) {
       # # Baum-Welch alg
       # #
-      omegaBeta <- logBeta + llEventState[tt + 1, , ] # element-wise product
+      omega_beta <- log_beta + ll_event_state[tt + 1, , ] # element-wise product
 
       # intermezzo: sample the tt HS conditional on (tt+1)st HS as in Stan
-      if (smoothProbsSt == "joint") {
-        probLastHS <- p[, tt, ] +
+      if (smooth_probs_states == "joint") {
+        prob_last_hs <- p[, tt, ] +
           t(vapply(
-            seq_len(nDraws),
+            seq_len(n_draws),
             \(x){
-              lastHS <- zSample[x, tt + 1]
-              log(draws[x, idxTheta[, lastHS]]) + omegaBeta[x, lastHS]
+              last_hs <- z_sample[x, tt + 1]
+              log(draws[x, idx_theta[, last_hs]]) + omega_beta[x, last_hs]
             },
-            numeric(2)
+            numeric(k_states)
           ))
-        probLastHS <- exp(sweep(probLastHS, 1, rowLogSumExps(probLastHS)))
-        zSample[, tt] <- apply(
-          probLastHS, 1,
-          \(x) sample.int(kStates, 1, prob = x)
+        prob_last_hs <- exp(sweep(prob_last_hs, 1, rowLogSumExps(prob_last_hs)))
+        z_sample[, tt] <- apply(
+          prob_last_hs, 1,
+          \(x) sample.int(k_states, 1, prob = x)
         )
       }
-      for (k in seq_len(kStates)) {
-        logBeta[, k] <- rowLogSumExps(
-          log(draws[, idxTheta[k, ]]) + omegaBeta
+      for (k in seq_len(k_states)) {
+        log_beta[, k] <- rowLogSumExps(
+          log(draws[, idx_theta[k, ]]) + omega_beta
         )
       }
 
       # running normalization
-      logBeta <- sweep(logBeta, 1, apply(logBeta, 1, max))
+      log_beta <- sweep(log_beta, 1, apply(log_beta, 1, max))
 
       #
-      gammat <- logBeta + p[, tt, ]
-      p[, tt, ] <- exp(sweep(gammat, 1, rowLogSumExps(gammat)))
+      gamma_t <- log_beta + p[, tt, ]
+      p[, tt, ] <- exp(sweep(gamma_t, 1, rowLogSumExps(gamma_t)))
 
       # sample tt HS from marginal distribution
-      if (smoothProbsSt == "marginal") {
-        zSample[, tt] <- apply(
+      if (smooth_probs_states == "marginal") {
+        z_sample[, tt] <- apply(
           p[, tt, ], 1,
-          \(x) sample.int(kStates, 1, prob = x)
+          \(x) sample.int(k_states, 1, prob = x)
         )
       }
     }
@@ -691,8 +702,8 @@ HMMPPperDraws <- function(
       prob = p
     )
 
-    if (smoothProbsSt != "none") {
-      output[["smoothProbs"]][["zSample"]] <- zSample
+    if (smooth_probs_states != "none") {
+      output[["smoothProbs"]][["zSample"]] <- z_sample
     }
   }
 
@@ -700,166 +711,166 @@ HMMPPperDraws <- function(
 }
 
 #' @importFrom expm expm
-CHMMPPperDraws <- function(
-    chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt, nnodes, kFactor) {
+chmm_pp_per_draws <- function(
+    chain_iter, draws_object, data_stan, model, sub_model,
+    k_states, type, smooth_probs_states, n_nodes, k_factor) {
   # init output
   output <- list()
 
-  draws <- drawsObject$draws
-  idxTheta <- drawsObject$idxTheta
-  idxEmission <- drawsObject$idxEmission
-  idxBetaChoice <- drawsObject$idxBetaChoice
-  idxBetaRate <- drawsObject$idxBetaRate
+  draws <- draws_object$draws
+  idx_theta <- draws_object$idx_theta
+  idx_emission <- draws_object$idx_emission
+  idx_beta_choice <- draws_object$idx_beta_choice
+  idx_beta_rate <- draws_object$idx_beta_rate
 
-  if (!is.null(chainIter)) {
-    splitDraws <- parallel::splitIndices(nrow(draws), nnodes * kFactor)
-    draws <- draws[splitDraws[[chainIter]], ]
+  if (!is.null(chain_iter)) {
+    split_draws <- parallel::splitIndices(nrow(draws), n_nodes * k_factor)
+    draws <- draws[split_draws[[chain_iter]], ]
   }
 
 
-  nDraws <- nrow(draws)
+  n_draws <- nrow(draws)
 
   # define sizes
-  nEvents <- ifelse(subModel %in% c("both", "rate"), "Trate", "Tchoice")
-  nEvents <- dataStan[[nEvents]]
+  n_events <- ifelse(sub_model %in% c("both", "rate"), "Trate", "Tchoice")
+  n_events <- data_stan[[n_events]]
 
-  isRes <- !is.null(dataStan$Nres)
-  TT <- ifelse(isRes, dataStan$Nres, nEvents)
+  is_res <- !is.null(data_stan$Nres)
+  TT <- ifelse(is_res, data_stan$Nres, n_events)
 
-  logCrudeRate <- ifelse(
-    subModel %in% c("both", "rate"),
-    log(dataStan$Trate / (dataStan$Nrate * mean(dataStan$timespan))), 0
+  log_crude_rate <- ifelse(
+    sub_model %in% c("both", "rate"),
+    log(data_stan$Trate / (data_stan$Nrate * mean(data_stan$timespan))), 0
   )
 
-  if (subModel %in% c("choice")) {
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+  if (sub_model %in% c("choice")) {
+    ll_event_state <- array(0, dim = c(n_events, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xb <- tcrossprod(dataStan$Xchoice, draws[, idxBetaChoice[kS, ]])
+    for (kS in seq_len(k_states)) {
+      xb <- tcrossprod(data_stan$Xchoice, draws[, idx_beta_choice[kS, ]])
 
-      for (event in seq_len(nEvents)) {
-        llEventState[event, , kS] <-
-          xb[dataStan$choseChoice[event], ] -
+      for (event in seq_len(n_events)) {
+        ll_event_state[event, , kS] <-
+          xb[data_stan$choseChoice[event], ] -
           colLogSumExps(
             xb,
             rows = seq(
-              dataStan$startChoice[event],
-              dataStan$endChoice[event]
+              data_stan$startChoice[event],
+              data_stan$endChoice[event]
             )
           )
       }
     }
   }
 
-  if (subModel %in% c("rate")) {
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+  if (sub_model %in% c("rate")) {
+    ll_event_state <- array(0, dim = c(n_events, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xb <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
-        logCrudeRate
+    for (kS in seq_len(k_states)) {
+      xb <- tcrossprod(data_stan$Xrate, draws[, idx_beta_rate[kS, ]]) +
+        log_crude_rate
 
-      for (event in seq_len(nEvents)) {
-        llEventState[event, , kS] <-
-          ifelse(dataStan$isDependent[event],
-            xb[dataStan$choseRate[event], ], 0
+      for (event in seq_len(n_events)) {
+        ll_event_state[event, , kS] <-
+          ifelse(data_stan$isDependent[event],
+            xb[data_stan$choseRate[event], ], 0
           ) -
-          dataStan$timespan[event] * exp(colLogSumExps(
+          data_stan$timespan[event] * exp(colLogSumExps(
             xb,
             rows = seq(
-              dataStan$startRate[event],
-              dataStan$endRate[event]
+              data_stan$startRate[event],
+              data_stan$endRate[event]
             )
           ))
       }
     }
   }
 
-  if (subModel %in% c("both")) {
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+  if (sub_model %in% c("both")) {
+    ll_event_state <- array(0, dim = c(n_events, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xbR <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
-        logCrudeRate
-      xbC <- tcrossprod(dataStan$Xchoice, draws[, idxBetaChoice[kS, ]])
+    for (kS in seq_len(k_states)) {
+      xbR <- tcrossprod(data_stan$Xrate, draws[, idx_beta_rate[kS, ]]) +
+        log_crude_rate
+      xbC <- tcrossprod(data_stan$Xchoice, draws[, idx_beta_choice[kS, ]])
 
-      eventChoice <- 1L
-      for (event in seq_len(nEvents)) {
-        loglik <- -dataStan$timespan[event] * exp(colLogSumExps(
+      event_choice <- 1L
+      for (event in seq_len(n_events)) {
+        loglik <- -data_stan$timespan[event] * exp(colLogSumExps(
           xbR,
           rows = seq(
-            dataStan$startRate[event],
-            dataStan$endRate[event]
+            data_stan$startRate[event],
+            data_stan$endRate[event]
           )
         ))
-        if (dataStan$isDependent[event]) {
-          loglik <- loglik + xbR[dataStan$choseRate[event], ] +
-            xbC[dataStan$choseChoice[eventChoice], ] -
+        if (data_stan$isDependent[event]) {
+          loglik <- loglik + xbR[data_stan$choseRate[event], ] +
+            xbC[data_stan$choseChoice[event_choice], ] -
             colLogSumExps(
               xbC,
               rows = seq(
-                dataStan$startChoice[eventChoice],
-                dataStan$endChoice[eventChoice]
+                data_stan$startChoice[event_choice],
+                data_stan$endChoice[event_choice]
               )
             )
-          eventChoice <- eventChoice + 1L
+          event_choice <- event_choice + 1L
         }
 
-        llEventState[event, , kS] <- loglik
+        ll_event_state[event, , kS] <- loglik
       }
     }
   }
 
-  if (isRes) {
-    llEventState <- array(apply(
-      llEventState,
+  if (is_res) {
+    ll_event_state <- array(apply(
+      ll_event_state,
       3,
       \(x) lapply(
         seq_len(TT),
         \(y) colSums2(
           x,
-          rows = seq(dataStan$resA[y], dataStan$resA[y + 1] - 1)
+          rows = seq(data_stan$resA[y], data_stan$resA[y + 1] - 1)
         )
       ) |> (\(x) Reduce(rbind, x = x))()
-    ), dim = c(TT, nDraws, kStates))
+    ), dim = c(TT, n_draws, k_states))
   }
 
   # compute transition probabilities
-  transProbs <- vapply(
-    dataStan$timespan,
+  trans_probs <- vapply(
+    data_stan$timespan,
     \(y)
     apply(
-      draws[, idxTheta] * y,
+      draws[, idx_theta] * y,
       1,
       \(x){
         log(expm::expm(
           matrix(
             x,
-            nrow = kStates, ncol = kStates
+            nrow = k_states, ncol = k_states
           )
         ))
       }
     ),
-    matrix(0, nrow = kStates^2, ncol = nDraws)
+    matrix(0, nrow = k_states^2, ncol = n_draws)
   )
 
-  idxTP <- idxTheta - min(idxTheta) + 1
+  idxTP <- idx_theta - min(idx_theta) + 1
 
   if (type %in% c("both", "viterbi")) {
     # back-pointer to the most likely previous state on the most probable path
-    bpointer <- array(0, dim = c(TT, kStates, nDraws))
+    bpointer <- array(0, dim = c(TT, k_states, n_draws))
     # max prob for the sequence up to t that ends with an emission from state k
-    delta <- array(0, dim = c(TT, kStates, nDraws))
+    delta <- array(0, dim = c(TT, k_states, n_draws))
 
     # forward past computing most likely state from previous state
     # first observation: p(y_1, z_1) = p(y_1| z_1) * p(z_1) (emission prob)
-    delta[1, , ] <- t(log(draws[, idxEmission]) + llEventState[1, , ])
+    delta[1, , ] <- t(log(draws[, idx_emission]) + ll_event_state[1, , ])
 
     for (tt in seq(2, TT)) {
       prevDelta <- t(delta[tt - 1, , ])
-      for (k in seq_len(kStates)) {
-        T_1_xj <- prevDelta + t(transProbs[idxTP[, k], , tt]) +
-          llEventState[tt, , k]
+      for (k in seq_len(k_states)) {
+        T_1_xj <- prevDelta + t(trans_probs[idxTP[, k], , tt]) +
+          ll_event_state[tt, , k]
 
         delta[tt, k, ] <- apply(T_1_xj, 1, max)
         bpointer[tt, k, ] <- apply(T_1_xj, 1, which.max)
@@ -868,15 +879,15 @@ CHMMPPperDraws <- function(
 
     # backward past
     z <- array(0L,
-      dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT))
+      dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT))
     )
 
     z[, TT] <- apply(delta[TT, , ], 2, which.max)
 
     for (tt in seq(TT - 1, 1)) {
       z[, tt] <- sapply(
-        seq_len(nDraws),
+        seq_len(n_draws),
         \(x) bpointer[tt + 1, z[x, tt + 1], x]
       )
     }
@@ -887,24 +898,26 @@ CHMMPPperDraws <- function(
   if (type %in% c("both", "smoothProbs")) {
     p <- array(
       0,
-      dim = c(nDraws, TT, kStates),
+      dim = c(n_draws, TT, k_states),
       dimnames = list(
-        draws = seq_len(nDraws), time = seq_len(TT),
-        states = seq_len(kStates)
+        draws = seq_len(n_draws), time = seq_len(TT),
+        states = seq_len(k_states)
       )
     )
 
     # log likelihood as sum of scaling factors, Kadhem 2015
     # those are the marginal probabilities of y_t
-    logLikRec <- array(0, dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT)))
+    logLikRec <- array(0, dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT)))
 
     # log likelihood conditional on the sample state, Kadhem 2015 and 2021
-    logLikCond <- array(0, dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT)))
+    logLikCond <- array(0, dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT)))
 
     # sampling of the last state, required for conditional logLik
-    if (smoothProbsSt != "none") zSample <- array(0L, dim = c(nDraws, TT))
+    if (smooth_probs_states != "none") {
+      zSample <- array(0L, dim = c(n_draws, TT))
+    }
 
     # forward -- filtering: alpha [tt, k] with running normalization
     #  11.2.2, Finite Mixture and Markov Switching models,
@@ -912,7 +925,7 @@ CHMMPPperDraws <- function(
 
     # # filter at first observation:
     # # p(S_1 = k, y_1) = p(y_1| S_1) * p(S_1); (emission prob)
-    p[, 1, ] <- log(draws[, idxEmission]) + llEventState[1, , ]
+    p[, 1, ] <- log(draws[, idx_emission]) + ll_event_state[1, , ]
     # Compute normalization constants Kadhem 2015 (It's just the marginal prob)
     # p(y_1) = \sum_k p(y_1, S_1 = k), marginal prob up to t, Frühwirth 2006
     logLikRec[, 1] <- rowLogSumExps(p[, 1, ])
@@ -920,17 +933,17 @@ CHMMPPperDraws <- function(
     p[, 1, ] <- sweep(p[, 1, ], 1, logLikRec[, 1])
 
     # objects intermediate values
-    ptt <- array(0, dim = c(nDraws, kStates))
+    ptt <- array(0, dim = c(n_draws, k_states))
     for (tt in seq(2, TT)) {
       # # one-step ahead prediction of S_t:
       # # p(S_t = k | y_{t-1}) = \sum_l \theta_{lk} p(S_{t-1} = l| y_{t-1})
-      for (k in seq_len(kStates)) {
+      for (k in seq_len(k_states)) {
         ptt[, k] <- rowLogSumExps(
           t(transProbs[idxTP[, k], ,tt]) + p[, tt - 1, ]) +
           # # filter for S_t: p(S_t = k| y_t) =
           # #  p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) /
           # #  \sum_k p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1})
-          llEventState[tt, , k]
+          ll_event_state[tt, , k]
       }
       # marginal prob (y) and filter probs P(S_t = k | y_t)
       marginalProb <- rowLogSumExps(ptt)
@@ -942,16 +955,16 @@ CHMMPPperDraws <- function(
     # Normalize last value, already smooth distribution
     p[, TT, ] <- exp(p[, TT, ])
 
-    if (smoothProbsSt != "none") { # sample last Hidden State (HS)
+    if (smooth_probs_states != "none") { # sample last Hidden State (HS)
       zSample[, TT] <- apply(
         p[, TT, ], 1,
-        \(x) sample.int(kStates, 1, prob = exp(x))
+        \(x) sample.int(k_states, 1, prob = exp(x))
       )
 
       # Compute conditional log likelihood
       logLikCond[, TT] <- vapply(
-        seq_len(nDraws),
-        \(x) llEventState[TT, x, zSample[x, TT]],
+        seq_len(n_draws),
+        \(x) ll_event_state[TT, x, zSample[x, TT]],
         numeric(1)
       )
     }
@@ -964,39 +977,39 @@ CHMMPPperDraws <- function(
 
     # # Baum-Welch alg
     # initial ending state is \beta_i(T) = 1
-    logBeta <- array(0, dim = c(nDraws, kStates))
+    logBeta <- array(0, dim = c(n_draws, k_states))
 
     for (tt in seq(TT - 1, 1)) {
       # \beta_j(t) * p(y_{t+1} | S_{t+1} = j)
-      omegaBeta <- logBeta + llEventState[tt + 1, , ] # element-wise product
+      omegaBeta <- logBeta + ll_event_state[tt + 1, , ] # element-wise product
 
       # intermezzo: sample the tt HS conditional on (tt+1)st HS as in Stan
       # FFBS, a.k.a, Multi-move sampling
-      if (smoothProbsSt == "joint") {
+      if (smooth_probs_states == "joint") {
         probLastHS <- p[, tt, ] +
           t(vapply(
-            seq_len(nDraws),
+            seq_len(n_draws),
             \(x){
               lastHS <- zSample[x, tt + 1]
               # p(S_{t+1} = j|S_t = i) * p(y_{t+1}|S_{t+1} = j) * \beta_j(t)
               t(transProbs[idxTP[, lastHS], x, tt]) + omegaBeta[x, lastHS]
             },
-            numeric(kStates)
+            numeric(k_states)
           ))
         probLastHS <- exp(sweep(probLastHS, 1, rowLogSumExps(probLastHS)))
         zSample[, tt] <- apply(
           probLastHS, 1,
-          \(x) sample.int(kStates, 1, prob = x)
+          \(x) sample.int(k_states, 1, prob = x)
         )
 
         # Compute conditional log likelihood
         logLikCond[, tt] <- vapply(
-          seq_len(nDraws),
-          \(x) llEventState[tt, x, zSample[x, tt]],
+          seq_len(n_draws),
+          \(x) ll_event_state[tt, x, zSample[x, tt]],
           numeric(1)
         )
       }
-      for (k in seq_len(kStates)) {
+      for (k in seq_len(k_states)) {
         # p(S_{t+1} = j | S_t = i) * p(y_{t+1} | S_{t+1} = j) * \beta_j(t)
         logBeta[, k] <- rowLogSumExps(
           t(transProbs[idxTP[k, ], , tt]) + omegaBeta
@@ -1012,10 +1025,10 @@ CHMMPPperDraws <- function(
       p[, tt, ] <- exp(sweep(gammat, 1, rowLogSumExps(gammat)))
 
       # sample tt HS from marginal distribution
-      if (smoothProbsSt == "marginal") {
+      if (smooth_probs_states == "marginal") {
         zSample[, tt] <- apply(
           p[, tt, ], 1,
-          \(x) sample.int(kStates, 1, prob = x)
+          \(x) sample.int(k_states, 1, prob = x)
         )
       }
     }
@@ -1024,7 +1037,7 @@ CHMMPPperDraws <- function(
       prob = p
     )
 
-    if (smoothProbsSt != "none") {
+    if (smooth_probs_states != "none") {
       output[["smoothProbs"]][["zSample"]] <- zSample
     }
 
@@ -1035,115 +1048,127 @@ CHMMPPperDraws <- function(
   return(output)
 }
 
-CHMMREPPperDraws <- function(
-    chainIter, drawsObject, dataStan, model, subModel,
-    kStates, type, smoothProbsSt, nnodes, kFactor) {
+chmm_re_pp_per_draws <- function(
+    chain_iter, draws_object, data_stan, model, sub_model,
+    k_states, type, smooth_probs_st, n_nodes, k_factor) {
   # init output
   output <- list()
 
-  draws <- drawsObject$draws
-  idxTheta <- drawsObject$idxTheta
-  idxEmission <- drawsObject$idxEmission
-  idxBetaChoice <- drawsObject$idxBetaChoice
-  idxBetaRate <- drawsObject$idxBetaRate
+  draws <- draws_object$draws
+  idxTheta <- draws_object$idxTheta
+  idxEmission <- draws_object$idxEmission
+  idxBetaChoice <- draws_object$idxBetaChoice
+  idxBetaRate <- draws_object$idxBetaRate
 
-  idxGammaChoice <- drawsObject$idxGammaChoice
-  idxGammaRate <- drawsObject$idxGammaRate
-  idxLOmegaChoice <- drawsObject$idxLOmegaChoice
-  idxLOmegaRate <- drawsObject$idxLOmegaRate
-  idxLSigmaChoice <- drawsObject$idxLSigmaChoice
+  idxGammaChoice <- draws_object$idxGammaChoice
+  idxGammaRate <- draws_object$idxGammaRate
+  idxLOmegaChoice <- draws_object$idxLOmegaChoice
+  idxLOmegaRate <- draws_object$idxLOmegaRate
+  idxLSigmaChoice <- draws_object$idxLSigmaChoice
 
 
-  if (!is.null(chainIter)) {
-    splitDraws <- parallel::splitIndices(nrow(draws), nnodes * kFactor)
-    draws <- draws[splitDraws[[chainIter]], ]
+  if (!is.null(chain_iter)) {
+    split_draws <- parallel::splitIndices(nrow(draws), n_nodes * k_factor)
+    draws <- draws[split_draws[[chain_iter]], ]
   }
 
 
-  nDraws <- nrow(draws)
+  n_draws <- nrow(draws)
 
   # define sizes
-  nEvents <- ifelse(subModel %in% c("both", "rate"), "Trate", "Tchoice")
-  nEvents <- dataStan[[nEvents]]
+  nEvents <- ifelse(sub_model %in% c("both", "rate"), "Trate", "Tchoice")
+  nEvents <- data_stan[[nEvents]]
 
-  isRes <- !is.null(dataStan$Nres)
-  TT <- ifelse(isRes, dataStan$Nres, nEvents)
+  isRes <- !is.null(data_stan$Nres)
+  TT <- ifelse(isRes, data_stan$Nres, nEvents)
 
   logCrudeRate <- ifelse(
-    subModel %in% c("both", "rate"),
-    log(dataStan$Trate / (dataStan$Nrate * mean(dataStan$timespan))), 0
+    sub_model %in% c("both", "rate"),
+    log(data_stan$Trate / (data_stan$Nrate * mean(data_stan$timespan))), 0
   )
 
   # indices group
-  startGroup <- c(dataStan$startGroup, TT + 1)
-  group <- dataStan$groupChoice
+  startGroup <- c(data_stan$startGroup, TT + 1)
+  group <- data_stan$groupChoice
 
-  if (subModel %in% c("choice")) {
-    Xchoice <- dataStan$Xchoice
-    Zchoice <- dataStan$Xchoice[, dataStan$V1choice]
+  if (sub_model %in% c("choice")) {
+    Xchoice <- data_stan$Xchoice
+    Zchoice <- data_stan$Xchoice[, data_stan$V1choice]
 
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+    ll_event_state <- array(0, dim = c(nEvents, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
+    for (kS in seq_len(k_states)) {
       for (event in seq_len(nEvents)) {
-        eventIdx <- seq(dataStan$startChoice[event], dataStan$endChoice[event])
-        eventChose <- dataStan$choseChoice[event] - dataStan$startChoice[event] + 1
+        eventIdx <- seq(
+          data_stan$startChoice[event], data_stan$endChoice[event]
+        )
+        eventChose <- data_stan$choseChoice[event] -
+          data_stan$startChoice[event] + 1
         xb <- tcrossprod(Xchoice[eventIdx, ], draws[, idxBetaChoice[kS, ]]) +
-          tcrossprod(Zchoice[eventIdx, ], draws[, idxGammaChoice[kS, group[eventIdx[1]], ]])
+          tcrossprod(
+            Zchoice[eventIdx, ],
+            draws[, idxGammaChoice[kS, group[eventIdx[1]], ]]
+          )
 
-        llEventState[event, , kS] <- xb[eventChose, ] - colLogSumExps(xb)
+        ll_event_state[event, , kS] <- xb[eventChose, ] - colLogSumExps(xb)
       }
     }
   }
 
-  if (subModel %in% c("rate")) {
-    Xrate <- dataStan$Xrate
-    Zrate <- dataStan$Xrate[, dataStan$V1rate]
+  if (sub_model %in% c("rate")) {
+    Xrate <- data_stan$Xrate
+    Zrate <- data_stan$Xrate[, data_stan$V1rate]
 
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+    ll_event_state <- array(0, dim = c(nEvents, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
+    for (kS in seq_len(k_states)) {
       for (event in seq_len(nEvents)) {
-        eventIdx <- seq(dataStan$startRate[event], dataStan$endRate[event])
-        eventChose <- dataStan$choseRate[event] - dataStan$startRate[event] + 1
+        eventIdx <- seq(data_stan$startRate[event], data_stan$endRate[event])
+        eventChose <- data_stan$choseRate[event] -
+          data_stan$startRate[event] + 1
         xb <- tcrossprod(Xrate[eventIdx, ], draws[, idxBetaRate[kS, ]]) +
           tcrossprod(Zrate[eventIdx, ],
             draws[, idxGammaRate[kS, group[eventIdx[1]], ]]) +
             logCrudeRate
-        llEventState[event, , kS] <-
-          ifelse(dataStan$isDependent[event], xb[eventChose, ], 0) -
-          dataStan$timespan[event] * exp(colLogSumExps(xb))
+        ll_event_state[event, , kS] <-
+          ifelse(data_stan$isDependent[event], xb[eventChose, ], 0) -
+          data_stan$timespan[event] * exp(colLogSumExps(xb))
       }
     }
   }
 
-  if (subModel %in% c("both")) {
-    Xchoice <- dataStan$Xchoice
-    Zchoice <- dataStan$Xchoice[, dataStan$V1choice]
-    Xrate <- dataStan$Xrate
-    Zrate <- dataStan$Xrate[, dataStan$V1rate]
+  if (sub_model %in% c("both")) {
+    Xchoice <- data_stan$Xchoice
+    Zchoice <- data_stan$Xchoice[, data_stan$V1choice]
+    Xrate <- data_stan$Xrate
+    Zrate <- data_stan$Xrate[, data_stan$V1rate]
 
-    llEventState <- array(0, dim = c(nEvents, nDraws, kStates))
+    ll_event_state <- array(0, dim = c(nEvents, n_draws, k_states))
 
-    for (kS in seq_len(kStates)) {
-      xbR <- tcrossprod(dataStan$Xrate, draws[, idxBetaRate[kS, ]]) +
+    for (kS in seq_len(k_states)) {
+      xbR <- tcrossprod(Xrate, draws[, idxBetaRate[kS, ]]) +
         logCrudeRate
-      xbC <- tcrossprod(dataStan$Xchoice, draws[, idxBetaChoice[kS, ]])
+      xbC <- tcrossprod(Xchoice, draws[, idxBetaChoice[kS, ]])
 
       eventChoice <- 1L
       for (event in seq_len(nEvents)) {
-        eventIdx <- seq(dataStan$startRate[event], dataStan$endRate[event])
-        eventChose <- dataStan$choseRate[event] - dataStan$startRate[event] + 1
+        eventIdx <- seq(data_stan$startRate[event], data_stan$endRate[event])
+        eventChose <- data_stan$choseRate[event] -
+          data_stan$startRate[event] + 1
         xbR <- tcrossprod(Xrate[eventIdx, ], draws[, idxBetaRate[kS, ]]) +
           tcrossprod(Zrate[eventIdx, ],
             draws[, idxGammaRate[kS, group[eventIdx[1]], ]]) +
             logCrudeRate
-        loglik <- -dataStan$timespan[event] * exp(colLogSumExps(xbR))
-        if (dataStan$isDependent[event]) {
+        loglik <- -data_stan$timespan[event] * exp(colLogSumExps(xbR))
+        if (data_stan$isDependent[event]) {
           loglik <- loglik + xbR[eventChose, ]
 
-          eventIdx <- seq(dataStan$startChoice[eventChoice], dataStan$endChoice[eventChoice])
-          eventChose <- dataStan$choseChoice[eventChoice] - dataStan$startChoice[eventChoice] + 1
+          eventIdx <- seq(
+            data_stan$startChoice[eventChoice],
+            data_stan$endChoice[eventChoice]
+          )
+          eventChose <- data_stan$choseChoice[eventChoice] -
+            data_stan$startChoice[eventChoice] + 1
 
           xbC <- tcrossprod(Xchoice[eventIdx, ], draws[, idxBetaChoice[kS, ]]) +
             tcrossprod(Zchoice[eventIdx, ],
@@ -1153,28 +1178,28 @@ CHMMREPPperDraws <- function(
           eventChoice <- eventChoice + 1L
         }
 
-        llEventState[event, , kS] <- loglik
+        ll_event_state[event, , kS] <- loglik
       }
     }
   }
 
   if (isRes) {
-    llEventState <- array(apply(
-      llEventState,
+    ll_event_state <- array(apply(
+      ll_event_state,
       3,
       \(x) lapply(
         seq_len(TT),
         \(y) colSums2(
           x,
-          rows = seq(dataStan$resA[y], dataStan$resA[y + 1] - 1)
+          rows = seq(data_stan$resA[y], data_stan$resA[y + 1] - 1)
         )
       ) |> (\(x) Reduce(rbind, x = x))()
-    ), dim = c(TT, nDraws, kStates))
+    ), dim = c(TT, n_draws, k_states))
   }
 
   # compute transition probabilities
   transProbs <- vapply(
-    dataStan$timesSender,
+    data_stan$timesSender,
     \(y)
     apply(
       draws[, idxTheta] * y,
@@ -1183,41 +1208,43 @@ CHMMREPPperDraws <- function(
         log(expm::expm(
           matrix(
             x,
-            nrow = kStates, ncol = kStates
+            nrow = k_states, ncol = k_states
           )
         ))
       }
     ),
-    matrix(0, nrow = kStates^2, ncol = nDraws)
+    matrix(0, nrow = k_states^2, ncol = n_draws)
   )
 
   idxTP <- idxTheta - min(idxTheta) + 1
 
   if (type %in% c("both", "viterbi")) {
     # back-pointer to the most likely previous state on the most probable path
-    bpointer <- array(0, dim = c(TT, kStates, nDraws))
+    bpointer <- array(0, dim = c(TT, k_states, n_draws))
     # max prob for the sequence up to t that ends with an emission from state k
-    delta <- array(0, dim = c(TT, kStates, nDraws))
+    delta <- array(0, dim = c(TT, k_states, n_draws))
 
     # forward past
     z <- array(0L,
-      dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT))
+      dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT))
     )
 
-    for (gg in seq_len(dataStan$G)) {
-      nEventsG <- startGroup[gg + 1] - startGroup[gg]
+    for (gg in seq_len(data_stan$G)) {
+      n_events_g <- startGroup[gg + 1] - startGroup[gg]
       eventIdx <- seq(startGroup[gg], startGroup[gg + 1] - 1)
 
       # forward past computing most likely state from previous state
       # first observation: p(y_1, z_1) = p(y_1| z_1) * p(z_1) (emission prob)
-      delta[eventIdx[1], , ] <- t(log(draws[, idxEmission]) + llEventState[eventIdx[1], , ])
+      delta[eventIdx[1], , ] <- t(
+        log(draws[, idxEmission]) + ll_event_state[eventIdx[1], , ]
+      )
 
       for (tt in tail(eventIdx, -1)) {
         prevDelta <- t(delta[tt - 1, , ])
-        for (k in seq_len(kStates)) {
+        for (k in seq_len(k_states)) {
           T_1_xj <- prevDelta + t(transProbs[idxTP[, k], , tt]) +
-            llEventState[tt, , k]
+            ll_event_state[tt, , k]
 
           delta[tt, k, ] <- apply(T_1_xj, 1, max)
           bpointer[tt, k, ] <- apply(T_1_xj, 1, which.max)
@@ -1225,11 +1252,12 @@ CHMMREPPperDraws <- function(
       }
 
       # backward past
-      z[, tail(eventIdx, 1)] <- apply(delta[tail(eventIdx, 1), , ], 2, which.max)
+      z[, tail(eventIdx, 1)] <-
+        apply(delta[tail(eventIdx, 1), , ], 2, which.max)
 
       for (tt in rev(head(eventIdx, -1))) {
         z[, tt] <- sapply(
-          seq_len(nDraws),
+          seq_len(n_draws),
           \(x) bpointer[tt + 1, z[x, tt + 1], x]
         )
       }
@@ -1240,27 +1268,29 @@ CHMMREPPperDraws <- function(
   if (type %in% c("both", "smoothProbs")) {
     p <- array(
       0,
-      dim = c(nDraws, TT, kStates),
+      dim = c(n_draws, TT, k_states),
       dimnames = list(
-        draws = seq_len(nDraws), time = seq_len(TT),
-        states = seq_len(kStates)
+        draws = seq_len(n_draws), time = seq_len(TT),
+        states = seq_len(k_states)
       )
     )
 
     # log likelihood as sum of scaling factors, Kadhem 2015
     # those are the marginal probabilities of y_t
-    logLikRec <- array(0, dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT)))
+    logLikRec <- array(0, dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT)))
 
     # log likelihood conditional on the sample state, Kadhem 2015 and 2021
-    logLikCond <- array(0, dim = c(nDraws, TT),
-      dimnames = list(draws = seq_len(nDraws), time = seq_len(TT)))
+    logLikCond <- array(0, dim = c(n_draws, TT),
+      dimnames = list(draws = seq_len(n_draws), time = seq_len(TT)))
 
     # sampling of the last state, required for conditional logLik
-    if (smoothProbsSt != "none") zSample <- array(0L, dim = c(nDraws, TT))
+    if (smooth_probs_states != "none") {
+      zSample <- array(0L, dim = c(n_draws, TT))
+    }
 
-    for (gg in seq_len(dataStan$G)) {
-      nEventsG <- startGroup[gg + 1] - startGroup[gg]
+    for (gg in seq_len(data_stan$G)) {
+      n_events_g <- startGroup[gg + 1] - startGroup[gg]
       eventIdx <- seq(startGroup[gg], startGroup[gg + 1] - 1)
 
       # forward -- filtering: alpha [tt, k] with running normalization
@@ -1269,25 +1299,28 @@ CHMMREPPperDraws <- function(
 
       # # filter at first observation:
       # # p(S_1 = k, y_1) = p(y_1| S_1) * p(S_1); (emission prob)
-      p[, eventIdx[1], ] <- log(draws[, idxEmission]) + llEventState[eventIdx[1], , ]
+      p[, eventIdx[1], ] <- log(draws[, idxEmission]) +
+        ll_event_state[eventIdx[1], , ]
       # Compute normalization constants Kadhem 2015 (It's just the marginal prob)
       # p(y_1) = \sum_k p(y_1, S_1 = k), marginal prob up to t, Frühwirth 2006
       logLikRec[, eventIdx[1]] <- rowLogSumExps(p[, eventIdx[1], ])
       # Filtering for s_t: p(S_t = k| y_t) = p(y_t, S_t = k) / p(y_t)
-      p[, eventIdx[1], ] <- sweep(p[, eventIdx[1], ], 1, logLikRec[, eventIdx[1]])
+      p[, eventIdx[1], ] <- sweep(
+        p[, eventIdx[1], ], 1, logLikRec[, eventIdx[1]]
+      )
 
       # objects intermediate values
-      ptt <- array(0, dim = c(nDraws, kStates))
+      ptt <- array(0, dim = c(n_draws, k_states))
       for (tt in tail(eventIdx, -1)) {
         # # one-step ahead prediction of S_t:
         # # p(S_t = k | y_{t-1}) = \sum_l \theta_{lk} p(S_{t-1} = l| y_{t-1})
-        for (k in seq_len(kStates)) {
+        for (k in seq_len(k_states)) {
           ptt[, k] <- rowLogSumExps(
             t(transProbs[idxTP[, k], ,tt]) + p[, tt - 1, ]) +
             # # filter for S_t: p(S_t = k| y_t) =
             # #  p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1}) /
             # #  \sum_k p(y_t|S_t=k,y_{t-1}) p(S_t=k|y_{t-1})
-            llEventState[tt, , k]
+            ll_event_state[tt, , k]
         }
         # marginal prob (y) and filter probs P(S_t = k | y_t)
         marginalProb <- rowLogSumExps(ptt)
@@ -1299,16 +1332,17 @@ CHMMREPPperDraws <- function(
       # Normalize last value, already smooth distribution
       p[, tail(eventIdx, 1), ] <- exp(p[, tail(eventIdx, 1), ])
 
-      if (smoothProbsSt != "none") { # sample last Hidden State (HS)
+      if (smooth_probs_states != "none") { # sample last Hidden State (HS)
         zSample[, tail(eventIdx, 1)] <- apply(
           p[, tail(eventIdx, 1), ], 1,
-          \(x) sample.int(kStates, 1, prob = exp(x))
+          \(x) sample.int(k_states, 1, prob = exp(x))
         )
 
         # Compute conditional log likelihood
-        logLikCond[, tail(eventIdx, 1)] <- vapply(
-          seq_len(nDraws),
-          \(x) llEventState[tail(eventIdx, 1), x, zSample[x, tail(eventIdx, 1)]],
+        tail_eventIdx <- tail(eventIdx, 1)
+        logLikCond[, tail_eventIdx] <- vapply(
+          seq_len(n_draws),
+          \(x) ll_event_state[tail_eventIdx, x, zSample[x, tail_eventIdx]],
           numeric(1)
         )
       }
@@ -1321,39 +1355,40 @@ CHMMREPPperDraws <- function(
 
       # # Baum-Welch alg
       # initial ending state is \beta_i(T) = 1
-      logBeta <- array(0, dim = c(nDraws, kStates))
+      logBeta <- array(0, dim = c(n_draws, k_states))
 
       for (tt in rev(head(eventIdx, -1))) {
         # \beta_j(t) * p(y_{t+1} | S_{t+1} = j)
-        omegaBeta <- logBeta + llEventState[tt + 1, , ] # element-wise product
+        # element-wise product
+        omegaBeta <- logBeta + ll_event_state[tt + 1, , ]
 
         # intermezzo: sample the tt HS conditional on (tt+1)st HS as in Stan
         # FFBS, a.k.a, Multi-move sampling
-        if (smoothProbsSt == "joint") {
+        if (smooth_probs_states == "joint") {
           probLastHS <- p[, tt, ] +
             t(vapply(
-              seq_len(nDraws),
+              seq_len(n_draws),
               \(x){
                 lastHS <- zSample[x, tt + 1]
                 # p(S_{t+1} = j|S_t = i) * p(y_{t+1}|S_{t+1} = j) * \beta_j(t)
                 t(transProbs[idxTP[, lastHS], x, tt]) + omegaBeta[x, lastHS]
               },
-              numeric(kStates)
+              numeric(k_states)
             ))
           probLastHS <- exp(sweep(probLastHS, 1, rowLogSumExps(probLastHS)))
           zSample[, tt] <- apply(
             probLastHS, 1,
-            \(x) sample.int(kStates, 1, prob = x)
+            \(x) sample.int(k_states, 1, prob = x)
           )
 
           # Compute conditional log likelihood
           logLikCond[, tt] <- vapply(
-            seq_len(nDraws),
-            \(x) llEventState[tt, x, zSample[x, tt]],
+            seq_len(n_draws),
+            \(x) ll_event_state[tt, x, zSample[x, tt]],
             numeric(1)
           )
         }
-        for (k in seq_len(kStates)) {
+        for (k in seq_len(k_states)) {
           # p(S_{t+1} = j | S_t = i) * p(y_{t+1} | S_{t+1} = j) * \beta_j(t)
           logBeta[, k] <- rowLogSumExps(
             t(transProbs[idxTP[k, ], , tt]) + omegaBeta
@@ -1369,10 +1404,10 @@ CHMMREPPperDraws <- function(
         p[, tt, ] <- exp(sweep(gammat, 1, rowLogSumExps(gammat)))
 
         # sample tt HS from marginal distribution
-        if (smoothProbsSt == "marginal") {
+        if (smooth_probs_states == "marginal") {
           zSample[, tt] <- apply(
             p[, tt, ], 1,
-            \(x) sample.int(kStates, 1, prob = x)
+            \(x) sample.int(k_states, 1, prob = x)
           )
         }
       }
@@ -1383,7 +1418,7 @@ CHMMREPPperDraws <- function(
       prob = p
     )
 
-    if (smoothProbsSt != "none") {
+    if (smooth_probs_states != "none") {
       output[["smoothProbs"]][["zSample"]] <- zSample
     }
 
@@ -1397,7 +1432,7 @@ CHMMREPPperDraws <- function(
 
 #' Get Draws from the Posterior Distribution of a HMM-DyNAM
 #'
-#' @inheritParams HMMPostProcessing
+#' @inheritParams hmm_post_processing
 #' @param type a character specifying weather the draws are shaped for the
 #' `label.switching` package or a simple matrix format.
 #'
@@ -1408,29 +1443,31 @@ CHMMREPPperDraws <- function(
 #' \donttest{
 #' library(goldfish)
 #' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
+#' callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+#'   link_events(changeEvent = calls, nodes = actors)
+#' callsDependent <- define_dependent_events(
 #'   events = calls, nodes = actors, defaultNetwork = callNetwork
 #' )
-#' data2stan <- CreateDataHMM(
-#'   rateEffects = callsDependent ~ indeg + outdeg,
-#'   choiceEffects = NULL
+#' socialEvolutionData <- make_data(callsDependent)
+#' data_to_stan <- make_data_hmm(
+#'   rate_effects = callsDependent ~ indeg + outdeg,
+#'   choice_effects = NULL,
+#'   data = socialEvolutionData
 #' )
 #'
-#' drawsMCMC <- HMMDraws2LS(data2stan, cmdstanSamples)
+#' drawsMCMC <- hmm_draws_to_label_switching(data_to_stan, cmdstanSamples)
 #' }
-HMMDraws2LS <- function(
-    data2Stan,
-    cmdstanSamples,
-    kStates = data2Stan$dataStan$kS,
+hmm_draws_to_label_switching <- function(
+    data_to_stan,
+    cmdstan_samples,
+    k_states = data_to_stan$dataStan$kS,
     type = c("2label.switching", "draws_matrix", "draws_array", "draws_df"),
     rescale = FALSE) {
   type <- match.arg(type)
   stopifnot(
-    inherits(cmdstanSamples, "CmdStanMCMC"),
-    inherits(data2Stan, "goldfish.latent.data"),
-    is.numeric(kStates) && length(kStates) == 1 && kStates >= 2
+    inherits(cmdstan_samples, "CmdStanMCMC"),
+    inherits(data_to_stan, "goldfish.latent.data"),
+    is.numeric(k_states) && length(k_states) == 1 && k_states >= 2
   )
 
   if (rescale && type %in% c("2label.switching", "draws_array")) {
@@ -1440,8 +1477,8 @@ HMMDraws2LS <- function(
     )
   }
 
-  model <- attr(data2Stan, "model")
-  subModel <- attr(data2Stan, "subModel")
+  model <- attr(data_to_stan, "model")
+  subModel <- attr(data_to_stan, "subModel")
 
   # extract draws and reformat for posterior computations
   theta <- ifelse(model == "DNHMM", "theta", "ta")
@@ -1461,7 +1498,7 @@ HMMDraws2LS <- function(
           c("gammaRate", "L_OmegaRate", "L_sigmaRate")
       )
   )
-  draws <- cmdstanSamples$draws(
+  draws <- cmdstan_samples$draws(
     parmsKeep,
     format = if (type == "draws_df") "draws_df" else "matrix"
   )
@@ -1469,7 +1506,7 @@ HMMDraws2LS <- function(
   namesTheta <- grep(paste0("^", theta), colnames(draws))
   idxTheta <- matrix(
     namesTheta,
-    nrow = kStates, ncol = length(namesTheta) / kStates
+    nrow = k_states, ncol = length(namesTheta) / k_states
   )
   idxEmission <- grep("^pi1", colnames(draws))
 
@@ -1477,34 +1514,35 @@ HMMDraws2LS <- function(
     draws = draws,
     idxEmission = idxEmission,
     idxTheta = idxTheta,
-    chains = cmdstanSamples$num_chains(),
-    iterSampling = cmdstanSamples$metadata()[["iter_sampling"]]
+    chains = cmdstan_samples$num_chains(),
+    iterSampling = cmdstan_samples$metadata()[["iter_sampling"]]
   )
 
   if (subModel %in% c("both", "choice")) {
     idxBetaChoice <- matrix(
       grep("^betaChoice[[]", colnames(draws)),
-      nrow = kStates, ncol = data2Stan$dataStan$Pchoice
+      nrow = k_states, ncol = data_to_stan$dataStan$Pchoice
     )
     output[["idxBetaChoice"]] <- idxBetaChoice
-    kPchoice <- data2Stan$dataStan$Pchoice
+    kPchoice <- data_to_stan$dataStan$Pchoice
 
     if (model == "DNCHMMRE") {
+      Qchoice <- data_to_stan$dataStan$Qchoice
       idxGammaChoice <- array(
         grep("^gammaChoice[[]", colnames(draws)),
-        dim = c(kStates, data2Stan$dataStan$G, data2Stan$dataStan$Qchoice)
+        dim = c(k_states, data_to_stan$dataStan$G, Qchoice)
       )
       output[["idxGammaChoice"]] <- idxGammaChoice
 
       idxLOmegaChoice <- array(
         grep("^L_OmegaChoice[[]", colnames(draws)),
-        dim = c(kStates, data2Stan$dataStan$Qchoice, data2Stan$dataStan$Qchoice)
+        dim = c(k_states, Qchoice, Qchoice)
       )
       output[["idxLOmegaChoice"]] <- idxLOmegaChoice
 
       idxLSigmaChoice <- matrix(
         grep("^L_sigmaChoice[[]", colnames(draws)),
-        nrow = kStates, ncol = data2Stan$dataStan$Qchoice
+        nrow = k_states, ncol = Qchoice
       )
       output[["idxLSigmaChoice"]] <- idxLSigmaChoice
     }
@@ -1513,33 +1551,34 @@ HMMDraws2LS <- function(
   }
 
   if (subModel %in% c("both", "rate")) {
+    kPrate <- data_to_stan$dataStan$Prate
     idxBetaRate <- matrix(
       if (subModel == "rate") {
         grep("^beta[[]", colnames(draws))
       } else {
         grep("^betaRate[[]", colnames(draws))
       },
-      nrow = kStates, ncol = data2Stan$dataStan$Prate
+      nrow = k_states, ncol = kPrate
     )
     output[["idxBetaRate"]] <- idxBetaRate
-    kPrate <- data2Stan$dataStan$Prate
 
     if (model == "DNCHMMRE") {
+      Qrate <- data_to_stan$dataStan$Qrate
       idxGammaRate <- array(
         grep("^gammaRate[[]", colnames(draws)),
-        dim = c(kStates, data2Stan$dataStan$G, data2Stan$dataStan$Qrate)
+        dim = c(k_states, data_to_stan$dataStan$G, Qrate)
       )
       output[["idxGammaRate"]] <- idxGammaRate
 
       idxLOmegaRate <- array(
         grep("^L_OmegaRate[[]", colnames(draws)),
-        dim = c(kStates, data2Stan$dataStan$Qrate, data2Stan$dataStan$Qrate)
+        dim = c(k_states, Qrate, Qrate)
       )
       output[["idxLOmegaRate"]] <- idxLOmegaRate
 
       idxLSigmaRate <- matrix(
         grep("^L_sigmaRate[[]", colnames(draws)),
-        nrow = kStates, ncol = data2Stan$dataStan$Qrate
+        nrow = k_states, ncol = Qrate
       )
       output[["idxLSigmaRate"]] <- idxLSigmaRate
     }
@@ -1551,24 +1590,25 @@ HMMDraws2LS <- function(
 
   # # rescale draws from betas if matrix of data frame and scale stats exists
   if (type %in% c("draws_matrix", "draws_df") &&
-    !(rescale && !is.null(data2Stan[["scaleStats"]]))) {
+    !(rescale && !is.null(data_to_stan[["scaleStats"]]))) {
     return(output)
   } else if (type %in% c("draws_matrix", "draws_df")) {
     output[["draws"]] <- as.data.frame(output[["draws"]])
     if (subModel %in% c("both", "choice")) {
-      for (state in seq_len(kStates)) {
+      for (state in seq_len(k_states)) {
         output[["draws"]][, idxBetaChoice[state, ]] <- t(apply(
           output[["draws"]][, idxBetaChoice[state, ]],
           1,
           RescaleCoefs,
-          scaleStats = data2Stan[["scaleStats"]],
+          scaleStats = data_to_stan[["scaleStats"]],
           isRate = FALSE
         ))
 
         if (model == "DNCHMMRE") {
-          Q <- data2Stan$dataStan$Qchoice
-          stdDev <- data2Stan$scaleStats$choice$`scaled:scale`[data2Stan$dataStan$V1choice]
-          for (gg in seq_len(data2Stan$dataStan$G))
+          Qchoice <- data_to_stan$dataStan$Qchoice
+          V1choice <- data_to_stan$dataStan$V1choice
+          stdDev <- data_to_stan$scaleStats$choice$`scaled:scale`[V1choice]
+          for (gg in seq_len(data_to_stan$dataStan$G))
             output[["draws"]][, idxGammaChoice[state, gg, ]] <- sweep(
               output[["draws"]][, idxGammaChoice[state, gg, ]],
               2,
@@ -1600,24 +1640,25 @@ HMMDraws2LS <- function(
     }
     if (subModel %in% c("both", "rate")) {
       offSetInt <- log(
-        data2Stan$dataStan$Trate /
-        (data2Stan$dataStan$Nrate *
-          mean(data2Stan$dataStan$timespan))
-      ) - log(data2Stan$dataStan$rescalingFactor)
-      for (state in seq_len(kStates)) {
+        data_to_stan$dataStan$Trate /
+          (data_to_stan$dataStan$Nrate *
+             mean(data_to_stan$dataStan$timespan))
+      ) - log(data_to_stan$dataStan$rescalingFactor)
+      for (state in seq_len(k_states)) {
         output[["draws"]][, idxBetaRate[state, ]] <- t(apply(
           output[["draws"]][, idxBetaRate[state, ]],
           1,
           RescaleCoefs,
-          scaleStats = data2Stan[["scaleStats"]],
+          scaleStats = data_to_stan[["scaleStats"]],
           offset = offSetInt,
           isRate = TRUE
         ))
 
         if (model == "DNCHMMRE") {
-          Q <- data2Stan$dataStan$Qrate
-          stdDev <- data2Stan$scaleStats$rate$`scaled:scale`[data2Stan$dataStan$V1rate]
-          for (gg in seq_len(data2Stan$dataStan$G))
+          Qrate <- data_to_stan$dataStan$Qrate
+          V1rate <- data_to_stan$dataStan$V1rate
+          stdDev <- data_to_stan$scaleStats$rate$`scaled:scale`[V1rate]
+          for (gg in seq_len(data_to_stan$dataStan$G))
             output[["draws"]][, idxGammaRate[state, gg, ]] <- sweep(
               output[["draws"]][, idxGammaRate[state, gg, ]],
               2,
@@ -1627,7 +1668,7 @@ HMMDraws2LS <- function(
         }
       }
       output[["draws"]][, idxTheta] <- output[["draws"]][, idxTheta] /
-        data2Stan$dataStan$rescalingFactor
+        data_to_stan$dataStan$rescalingFactor
 
 
     }
@@ -1635,7 +1676,7 @@ HMMDraws2LS <- function(
   }
 
   if (type == "draws_array") {
-    output[["draws"]] <- cmdstanSamples$draws(
+    output[["draws"]] <- cmdstan_samples$draws(
       parmsKeep,
       format = "draws_array"
     )
@@ -1646,7 +1687,7 @@ HMMDraws2LS <- function(
 
   drawsReshape <- array(
     0,
-    dim = c(nDraws, kStates, nParms),
+    dim = c(nDraws, k_states, nParms),
     dimnames = list(
       draws = NULL,
       state = NULL,
@@ -1658,7 +1699,7 @@ HMMDraws2LS <- function(
     )
   )
 
-  for (state in seq_len(kStates)) {
+  for (state in seq_len(k_states)) {
     colKeep <- c(
       idxEmission[state],
       # idxTheta[state, ], # it has the label switching problem
@@ -1673,26 +1714,26 @@ HMMDraws2LS <- function(
   return(output)
 }
 
-bindPPHMM <- function(
-    listOutputs,
+bind_pp_hmm <- function(
+    list_outputs,
     type = c("both", "viterbi", "smoothProbs"),
-    smoothProbsSt = c("joint", "marginal", "none")#,
+    smooth_probs_states = c("joint", "marginal", "none")#,
     #model = c("DNHMM", "DNCHMM")
   ) {
   type <- match.arg(type)
-  smoothProbsSt <- match.arg(smoothProbsSt)
+  smooth_probs_states <- match.arg(smooth_probs_states)
   #model <- match.arg(model)
 
   output <- list()
-  outputNames <- names(listOutputs[[1]])
+  outputNames <- names(list_outputs[[1]])
 
   if (type %in% c("both", "viterbi")) {
-    output[["viterbi"]] <- lapply(listOutputs, "[[", "viterbi") |>
+    output[["viterbi"]] <- lapply(list_outputs, "[[", "viterbi") |>
       (\(x) Reduce(rbind, x = x))()
   }
 
   if (type %in% c("both", "smoothProbs")) {
-    smoothProbs <- lapply(listOutputs, "[[", "smoothProbs") |>
+    smoothProbs <- lapply(list_outputs, "[[", "smoothProbs") |>
       lapply("[[", "prob")
     dimensions <- sapply(smoothProbs, dim)
     nrow <- sum(dimensions[1, ])
@@ -1710,9 +1751,9 @@ bindPPHMM <- function(
 
     output[["smoothProbs"]] <- list(prob = prob)
 
-    if (smoothProbsSt != "none") {
+    if (smooth_probs_states != "none") {
       output[["smoothProbs"]][["zSample"]] <- lapply(
-        listOutputs, "[[", "smoothProbs"
+        list_outputs, "[[", "smoothProbs"
       ) |>
         lapply("[[", "zSample") |>
         (\(x) Reduce(rbind, x = x))()
@@ -1759,9 +1800,9 @@ LabelSwitchingData <- function(
   df <- lapply(
     methodsPer,
     \(x) {
-      permuteMCMCArray(
+      permute_mcmc_array(
         draws = draws, permutation = labelSwitching[["permutations"]][[x]],
-        kStates = kStates, subModel = subModel
+        k_states = kStates, sub_model = subModel
       ) |>
         posterior::as_draws() |>
         bayesplot::mcmc_trace_data() |>
@@ -1863,9 +1904,7 @@ HSData <- function(
         )
       }
     ) |>
-      (\(x) {
-        Reduce(rbind.data.frame, x)
-      })()
+      (\(x) Reduce(rbind.data.frame, x))()
 
     return(dataSummary)
   } else if (type == "stateSample") {
@@ -1952,10 +1991,10 @@ plotHS <- function(
 
 #' Transform MCMC Array
 #'
-#' @param data2Stan a list output from `CreateDataHMM`
+#' @param data2Stan a list output from `make_data_hmm`
 #' @param cmdstanSamples a list output from `CmdStanMCMC`
 #' @param labelSwitching a list output from `label.switching`
-#' @param postProcessing a list output from `HMMPostProcessing`
+#' @param postProcessing a list output from `hmm_post_processing`
 #' @param kStates the number of states in the HMM
 #' @param method a character specifying the method to use for the permutation
 #' @param rescale a logical specifying if the draws should be rescaled
@@ -1977,9 +2016,9 @@ transformMCMCArray <- function(
 
   permutation <- labelSwitching[["permutations"]][[method]]
 
-  drawsdf <- permuteMCMCArray(
+  drawsdf <- permute_mcmc_array(
     draws = draws, permutation = permutation,
-    kStates = kStates, subModel = subModel
+    k_states = kStates, sub_model = subModel
   )
 
   output <- list(draws = drawsdf)
@@ -2029,18 +2068,18 @@ transformMCMCArray <- function(
 #'
 #' @return a data frame with the permuted draws
 #' @export
-permuteMCMCArray <- function(
-    draws, permutation, kStates,
-    model = c("DNHMM", "DNCHMM", "DNCHMMRE"), subModel = c("choice", "rate", "both"),
-    hmmType = c("discrete", "continuous")) {
+permute_mcmc_array <- function(
+    draws, permutation, k_states,
+    model = c("DNHMM", "DNCHMM", "DNCHMMRE"), sub_model = c("choice", "rate", "both"),
+    hmm_type = c("discrete", "continuous")) {
 
   model <- match.arg(model)
-  subModel <- match.arg(subModel)
-  hmmType <- match.arg(hmmType)
+  sub_model <- match.arg(sub_model)
+  hmm_type <- match.arg(hmm_type)
   output <- as.data.frame(draws$draws)
   draws$draws <- as.data.frame(draws$draws)
 
-  iterPermute <- apply(permutation, 1, \(x) any(x != seq_len(kStates))) |>
+  iterPermute <- apply(permutation, 1, \(x) any(x != seq_len(k_states))) |>
     which()
 
   if (length(iterPermute) == 0) {
@@ -2059,7 +2098,7 @@ permuteMCMCArray <- function(
       }
       )
     },
-    if (subModel %in% c("both", "rate")) {
+    if (sub_model %in% c("both", "rate")) {
       c(draws$idxBetaRate |> as.vector(),
       if (model == "DNCHMMRE") {
         c(draws$idxGammaRate |> as.vector(),
@@ -2070,7 +2109,7 @@ permuteMCMCArray <- function(
     }
   )
   for (iter in iterPermute) {
-    if (hmmType == "discrete") {
+    if (hmm_type == "discrete") {
       colPermutation <-
         draws$idxTheta[permutation[iter, ], permutation[iter, ]] |> as.vector()
     } else {
@@ -2080,7 +2119,8 @@ permuteMCMCArray <- function(
       for (row in seq_along(permIter)) {
         for (col in seq_along(permIter)) {
           if (row == col) next
-          jjPos <- ifelse(permIter[row] < permIter[col], permIter[col] - 1, permIter[col])
+          permCol <- permIter[col]
+          jjPos <- ifelse(permIter[row] < permCol, permCol - 1, permCol)
           jjNewPos <- ifelse(row < col, col - 1, col)
           colPermutation[row, jjNewPos] <- draws$idxTheta[permIter[row], jjPos]
         }
@@ -2088,25 +2128,28 @@ permuteMCMCArray <- function(
       colPermutation <- colPermutation |> as.vector()
     }
 
-    if (subModel %in% c("both", "choice")) {
-      choicePermutation <- draws$idxBetaChoice[permutation[iter, ], ] |> as.vector()
+    if (sub_model %in% c("both", "choice")) {
+      choicePermutation <- draws$idxBetaChoice[permutation[iter, ], ] |>
+        as.vector()
+
+      permIter <- permutation[iter, ]
       if (model == "DNCHMMRE") {
         choicePermutation <- c(
           choicePermutation,
-          draws$idxGammaChoice[permutation[iter, ], , ] |> as.vector(),
-          draws$idxLOmegaChoice[permutation[iter, ], , ] |> as.vector(),
-          draws$idxLSigmaChoice[permutation[iter, ], ] |> as.vector()
+          draws$idxGammaChoice[permIter, , ] |> as.vector(),
+          draws$idxLOmegaChoice[permIter, , ] |> as.vector(),
+          draws$idxLSigmaChoice[permIter, ] |> as.vector()
         )
       }
     } else choicePermutation <- NULL
-    if (subModel %in% c("both", "rate")) {
-      ratePermutation <- draws$idxBetaRate[permutation[iter, ], ] |> as.vector()
+    if (sub_model %in% c("both", "rate")) {
+      ratePermutation <- draws$idxBetaRate[permIter, ] |> as.vector()
       if (model == "DNCHMMRE") {
         ratePermutation <- c(
           ratePermutation,
-          draws$idxGammaRate[permutation[iter, ], , ] |> as.vector(),
-          draws$idxLOmegaRate[permutation[iter, ], , ] |> as.vector(),
-          draws$idxLSigmaRate[permutation[iter, ], ] |> as.vector()
+          draws$idxGammaRate[permIter, , ] |> as.vector(),
+          draws$idxLOmegaRate[permIter, , ] |> as.vector(),
+          draws$idxLSigmaRate[permIter, ] |> as.vector()
         )
       }
     } else ratePermutation <- NULL

@@ -29,9 +29,9 @@ data {
 
   int A; // number of actors/groups
 
-  // int Qchoice; // number of random effects
-  // matrix[Nchoice, Qchoice] Zchoice;
-  vector[Nchoice] Zchoice;
+  int Qchoice; // number of random effects
+  matrix[Nchoice, Qchoice] Zchoice;
+  // vector[Nchoice] Zchoice;
 
   array[Nchoice] int<lower = 1, upper = A> senderChoice;
 
@@ -66,25 +66,25 @@ model {
     gamma = sigma * gamma_raw;
 
     xbChoice = Xchoice * betaChoice +
-      to_vector(col(Zchoice, 1)) .* gamma[senderChoice]; 
+      to_vector(Zchoice) .* gamma[senderChoice]; 
   }
 
   for (t in 1:Tchoice)
     target  += xbChoice[choseChoice[t]] -
       log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
 }
-generated quantities {
-  vector[Tchoice] logLik; 
-  {
-    vector[Nchoice] xbChoice; 
-    vector[A] gamma;
-    gamma = sigma * gamma_raw;
-
-    xbChoice = Xchoice * betaChoice +
-      to_vector(col(Zchoice, 1)) .* gamma[senderChoice]; 
-
-    for (t in 1:Tchoice)
-      logLik[t] = xbChoice[choseChoice[t]] -
-        log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
-  }
-}
+// generated quantities {
+//   vector[Tchoice] logLik; 
+//   {
+//     vector[Nchoice] xbChoice; 
+//     vector[A] gamma;
+//     gamma = sigma * gamma_raw;
+// 
+//     xbChoice = Xchoice * betaChoice +
+//       to_vector(Zchoice) .* gamma[senderChoice]; 
+// 
+//     for (t in 1:Tchoice)
+//       logLik[t] = xbChoice[choseChoice[t]] -
+//         log_sum_exp(xbChoice[startChoice[t]:endChoice[t]]);
+//   }
+// }

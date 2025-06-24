@@ -45,21 +45,25 @@ library(goldfish.latent)
 
 # using cmdstanr for getting posterior samples and 
 library(cmdstanr)
+set_cmdstan_path()
+cmdstan_version()
 
 # using goldfish social evolution data set
 library(goldfish)
 data("Social_Evolution")
-callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
- linkEvents(changeEvent = calls, nodes = actors)
-callsDependent <- defineDependentEvents(
- events = calls, nodes = actors, defaultNetwork = callNetwork
+callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+ link_events(change_event = calls, nodes = actors)
+callsDependent <- make_dependent_events(
+ events = calls, nodes = actors, default_network = callNetwork
 )
-data2stan <- CreateData(
- randomEffects = list(inertia ~ 1),
- fixedEffects = callsDependent ~ recip + trans
+socialEvolutionData <- make_data(callsDependent)
+data2stan <- make_data_re(
+ random_effects = list(inertia ~ 1),
+ fixed_effects = callsDependent ~ recip + trans,
+ data = socialEvolutionData
 )
 
-stanCode <- CreateModelCode(data2stan)
+stanCode <- make_model_code(data2stan)
 
 mod01 <- cmdstan_model(stanCode)
 mod01Samples <- mod01$sample(
@@ -78,13 +82,13 @@ Plots from the posterior samples can be done using, for example,
 [`bayesplot`](https://mc-stan.org/bayesplot/) package. 
 
 ```{r}
-mod01Samples$summary("beta")
+mod01Samples$summary("betaChoice")
 
   # names fixed effects coincides with colnames(data2stan$dataStan$X)
 ```
 
 
-The `ComputeLogLikelihood()` function allows computing the marginal or
+The `compute_log_likelihood()` function allows computing the marginal or
 conditional log-likelihood for the model using MCMC samples from the posterior
 distribution. 
 Parallel computation using `parallel` package is possible.
@@ -94,7 +98,7 @@ Leave-One-Out approximation using Pareto smoothed importance sampling `loo()`.
 Those information criteria can be used to compare models using `loo_compare()`.
 
 ```{r}
-logLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
+logLikMod01 <- compute_log_likelihood(mod01Samples, data2stan, spec = 4)
 
 # loo and waic computation using the marginal
 library(loo)

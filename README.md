@@ -4,6 +4,7 @@
 # goldfish.latent
 
 <!-- badges: start -->
+
 <!-- badges: end -->
 
 `goldfish.latent` extends the `goldfish` package with models that
@@ -32,21 +33,25 @@ library(goldfish.latent)
 
 # using cmdstanr for getting posterior samples and 
 library(cmdstanr)
+set_cmdstan_path()
+cmdstan_version()
 
 # using goldfish social evolution data set
 library(goldfish)
 data("Social_Evolution")
-callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
- linkEvents(changeEvent = calls, nodes = actors)
-callsDependent <- defineDependentEvents(
- events = calls, nodes = actors, defaultNetwork = callNetwork
+callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+ link_events(change_event = calls, nodes = actors)
+callsDependent <- make_dependent_events(
+ events = calls, nodes = actors, default_network = callNetwork
 )
-data2stan <- CreateData(
- randomEffects = list(inertia ~ 1),
- fixedEffects = callsDependent ~ recip + trans
+socialEvolutionData <- make_data(callsDependent)
+data2stan <- make_data_re(
+ random_effects = list(inertia ~ 1),
+ fixed_effects = callsDependent ~ recip + trans,
+ data = socialEvolutionData
 )
 
-stanCode <- CreateModelCode(data2stan)
+stanCode <- make_model_code(data2stan)
 
 mod01 <- cmdstan_model(stanCode)
 mod01Samples <- mod01$sample(
@@ -64,18 +69,18 @@ posterior samples can be done using, for example,
 [`bayesplot`](https://mc-stan.org/bayesplot/) package.
 
 ``` r
-mod01Samples$summary("beta")
+mod01Samples$summary("betaChoice")
 #> # A tibble: 3 × 10
-#>   variable   mean median    sd   mad     q5    q95  rhat ess_bulk ess_tail
-#>   <chr>     <dbl>  <dbl> <dbl> <dbl>  <dbl>  <dbl> <dbl>    <dbl>    <dbl>
-#> 1 beta[1]   4.94   4.92  0.424 0.394  4.30  5.67   1.00      793.     936.
-#> 2 beta[2]   1.63   1.63  0.207 0.202  1.30  1.98   1.00     2881.    1372.
-#> 3 beta[3]  -0.272 -0.268 0.211 0.204 -0.640 0.0649 0.999    3188.    1797.
+#>   variable        mean median    sd   mad     q5    q95  rhat ess_bulk ess_tail
+#>   <chr>          <dbl>  <dbl> <dbl> <dbl>  <dbl>  <dbl> <dbl>    <dbl>    <dbl>
+#> 1 betaChoice[1]  4.30   4.33  0.406 0.385  3.63  4.92    1.00     842.    1126.
+#> 2 betaChoice[2]  1.65   1.65  0.200 0.203  1.33  1.98    1.00    2771.    1496.
+#> 3 betaChoice[3] -0.251 -0.241 0.217 0.218 -0.622 0.0853  1.00    3489.    1445.
 
   # names fixed effects coincides with colnames(data2stan$dataStan$X)
 ```
 
-The `ComputeLogLikelihood()` function allows computing the marginal or
+The `compute_log_likelihood()` function allows computing the marginal or
 conditional log-likelihood for the model using MCMC samples from the
 posterior distribution. Parallel computation using `parallel` package is
 possible. Using the [`loo`](https://mc-stan.org/loo/) functionalities is
@@ -85,31 +90,34 @@ Leave-One-Out approximation using Pareto smoothed importance sampling
 `loo_compare()`.
 
 ``` r
-logLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
+logLikMod01 <- compute_log_likelihood(mod01Samples, data2stan, spec = 4)
 
 # loo and waic computation using the marginal
 library(loo)
+#> This is loo version 2.8.0
+#> - Online documentation and vignettes at mc-stan.org/loo
+#> - As of v2.0.0 loo defaults to 1 core but we recommend using as many as possible. Use the 'cores' argument or set options(mc.cores = NUM_CORES) for an entire session.
 
 relEff <- relative_eff(exp(logLikMod01))
 looM01 <- loo(logLikMod01, r_eff = relEff)
 #> Warning: Some Pareto k diagnostic values are too high. See help('pareto-k-diagnostic') for details.
 looM01
 #> 
-#> Computed from 2000 by 34 log-likelihood matrix
+#> Computed from 2000 by 34 log-likelihood matrix.
 #> 
 #>          Estimate    SE
-#> elpd_loo   -679.8 112.0
-#> p_loo        17.7   8.0
-#> looic      1359.7 224.1
+#> elpd_loo   -681.6 111.8
+#> p_loo        18.1   8.2
+#> looic      1363.3 223.5
 #> ------
-#> Monte Carlo SE of elpd_loo is NA.
+#> MCSE of elpd_loo is NA.
+#> MCSE and ESS estimates assume MCMC draws (r_eff in [0.3, 1.3]).
 #> 
 #> Pareto k diagnostic values:
-#>                          Count Pct.    Min. n_eff
-#> (-Inf, 0.5]   (good)     28    82.4%   231       
-#>  (0.5, 0.7]   (ok)        0     0.0%   <NA>      
-#>    (0.7, 1]   (bad)       3     8.8%   8         
-#>    (1, Inf)   (very bad)  3     8.8%   1770      
+#>                          Count Pct.    Min. ESS
+#> (-Inf, 0.7]   (good)     28    82.4%   155     
+#>    (0.7, 1]   (bad)       2     5.9%   <NA>    
+#>    (1, Inf)   (very bad)  4    11.8%   <NA>    
 #> See help('pareto-k-diagnostic') for details.
 ```
 

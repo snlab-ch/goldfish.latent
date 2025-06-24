@@ -2,8 +2,8 @@
 % Please edit documentation in R/goldfish.latent-package.R
 \docType{package}
 \name{goldfish.latent-package}
-\alias{goldfish.latent}
 \alias{goldfish.latent-package}
+\alias{goldfish.latent}
 \title{goldfish.latent: Relational Event Models with Latent Variables}
 \description{
 Bayesian estimation of relational event models with latent variables. The class of models introduced in the package extends the dynamic network actor models ('DyNAMs') and relational event models ('REMs') estimated with the package goldfish. Bayesian inference methods as hamiltonian markov chain (HMC) as implemented in Stan are used to perform inferences of the proposed models.

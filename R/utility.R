@@ -10,7 +10,7 @@
 #' temporal folder. Using the `dir` argument is possible to write the model
 #' in a folder specifies by the user.
 #'
-#' @param dataStan a `list` output of a [CreateData()] call.
+#' @param data_stan a `list` output of a [CreateData()] call.
 #' @param ... additional arguments to be passed to
 #'   [cmdstanr::write_stan_file()]
 #'
@@ -18,50 +18,51 @@
 #' It contains the code with the specification of data structure, priors,
 #' and log-likelihood of the given model.
 #'
-#' @export CreateModelCode
+#' @export
 #'
 #' @examples
 #' \donttest{
 #' library(goldfish)
 #' library(cmdstanr)
 #' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
-#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+#'   link_events(change_event = calls, nodes = actors)
+#' callsDependent <- define_dependent_events(
+#'   events = calls, nodes = actors, default_network = callNetwork
 #' )
-#' data2stan <- CreateDataModel(
-#'   randomEffects = list(inertia ~ 1),
-#'   fixedEffects = callsDependent ~ recip + trans
+#' socialEvolutionData <- make_data(callsDependent)
+#' data2stan <- make_data_re(
+#'   random_effects = list(inertia ~ 1),
+#'   fixed_effects = callsDependent ~ recip + trans,
+#'   data = data
 #' )
 #'
-#' stanCode <- CreateModelCode(data2stan)
+#' stanCode <- make_model_code(data2stan)
 #' }
-CreateModelCode <- function(dataStan, ...) {
-  UseMethod("CreateModelCode", dataStan)
-}
+# make_model_code <- function(data_stan, ...) {
+#   UseMethod("make_model_code", data_stan)
+# }
 
-#' @rdname CreateModelCode
-#' @export
-CreateModelCode.default <- function(dataStan, ...) {
-  stopifnot(inherits(dataStan, "goldfish.latent.data"))
+make_model_code <- function(data_stan, ...) {
+  stopifnot(inherits(data_stan, "goldfish.latent.data"))
 
-  model <- attr(dataStan, "model")
-  subModel <- attr(dataStan, "subModel")
+  model <- attr(data_stan, "model")
+  subModel <- attr(data_stan, "subModel")
 
   if (model == "DyNAMRE" && subModel == "choice") {
-    if (dataStan[["dataStan"]][["Qchoice"]] == 1) {
+    if (data_stan[["dataStan"]][["Qchoice"]] == 1) {
       fileModel <- "DNRE1_choice.stan"
     } else stop("Not yet implemented for more than one random effect")
   } else if (model == "DNHMM") {
-    if (subModel == "both" && dataStan[["dataStan"]][["hasIntercept"]]) {
+    if (subModel == "both" && data_stan[["dataStan"]][["hasIntercept"]]) {
       # stop("Not yet implemented, use independent submodels")
       # fileModel <- "DyNAMSR_both.stan"
       fileModel <- "DNHMM_both.stan"
     } else if (subModel == "both") {
       stop("Not yet implemented, use independent submodels")
       fileModel <- "DNHMM_both_ord.stan"
-    } else if (subModel == "rate" && dataStan[["dataStan"]][["hasIntercept"]]) {
+    } else if (subModel == "rate" &&
+               data_stan[["dataStan"]][["hasIntercept"]]) {
       fileModel <- "DNHMM_rate.stan"
     } else if (subModel == "choice") {
       fileModel <- "DNHMM_choice.stan"
@@ -85,153 +86,159 @@ CreateModelCode.default <- function(dataStan, ...) {
 }
 
 
-#' @rdname CreateModelCode
-#' @export
-CreateModelCode.DNRE <- function(
-    dataStan,
-    subModel = attr(dataStan, "subModel"),
-    prior = c("normal", "t-student"),
-    priorRE = c("default", "gamma", "invWishart", "LKJ"),
-    generateQuantities = FALSE,
-    ...
-) {
-  prior <- match.arg(prior)
-  priorRE <- match.arg(priorRE)
-  subModel <- match.arg(subModel, c("both", "choice", "rate"))
+# @rdname make_model_code
+# @export
+# make_model_code.DNRE <- function(
+#     data_stan,
+#     sub_model = attr(data_stan, "subModel"),
+#     prior = c("normal", "t-student"),
+#     prior_re = c("default", "gamma", "invWishart", "LKJ"),
+#     generate_quantities = FALSE,
+#     ...
+# ) {
+#   prior <- match.arg(prior)
+#   priorRE <- match.arg(priorRE)
+#   subModel <- match.arg(subModel, c("both", "choice", "rate"))
+# 
+#   Q <- ifelse(
+#     !is.null(dataStan[["stan"]][["Qrate"]]),
+#     dataStan[["stan"]][["Qrate"]],
+#     0L
+#   ) +
+#     ifelse(
+#       !is.null(dataStan[["stan"]][["Qchoice"]]),
+#       dataStan[["stan"]][["Qchoice"]],
+#       0L
+#     )
+# 
+#   typeQ <- ifelse(Q > 1, "Qm", "Q1")
+# 
+#   parmsFE <- do.call(
+#     utils::getS3method("ReadParms", subModel),
+#     list(x = prior)
+#   )
+#   parmsRE <- c(
+#     SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
+#     SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
+#   )
+#   stanCode <- c(
+#     "data {",
+#     ReadStanChunkType(subModel, "DN", "data"),
+#     "  int A; // number of senders",
+#     ReadStanChunkType(subModel, "DNRE", "data"),
+#     "}\nparameters {",
+#     parmsFE[["pm"]],
+#     parmsRE[["pm"]],
+#     "}",
+#     parmsRE[["tp"]],
+#     "model {\n  //priors",
+#     parmsFE[["pr"]],
+#     parmsRE[["pr"]],
+#     "  // loglikelihood",
+#     parmsRE[["ll"]],
+#     "}",
+#     if (generateQuantities) parmsRE[["gq"]]
+#   )
+# 
+#   cmdstanr::write_stan_file(code = stanCode)
+# }
+# 
+# ReadStanChunk <- function(prefix, type, suffix, isType = TRUE) {
+#   fileChunk <- paste0(
+#     prefix, "_", if (isType) paste0(type, "_"), suffix, ".stan"
+#   )
+#   readLines(system.file("stan", fileChunk, package = "goldfish.latent"))
+# }
+# 
+# ReadStanChunkType <- function(
+#     x, prefix, suffix, isCommon = FALSE
+# ) {
+#   switch(
+#     (!isCommon) * match(x, c("rate", "choice", "both")) + 1,
+#     ReadStanChunk(prefix, "", suffix, isType = FALSE),
+#     ReadStanChunk(prefix, "rt", suffix),
+#     ReadStanChunk(prefix, "ch", suffix),
+#     c(
+#       ReadStanChunkType("rate", prefix, suffix, isCommon),
+#       ReadStanChunkType("choice",  prefix, suffix, isCommon)
+#     ),
+#     stop("not recognize submodel")
+#   )
+# }
+# 
+# ReadStanChunkLL <- function(x, prefix) {
+#   suffix <- "ll"
+#   switch(
+#     match(x, c("rate", "choice", "both")),
+#     ReadStanChunk(prefix, "rt", suffix),
+#     ReadStanChunk(prefix, "ch", suffix),
+#     ReadStanChunk(prefix, "bt", suffix),
+#     stop("not recognize submodel")
+#   )
+# }
+# SplitJoinChunk <- function(
+#     x, prefix, suffix, isCommon = FALSE
+# ) {
+#   codeLines <- ReadStanChunkType(x, prefix, suffix, isCommon)
+#   chunksTitles <- grep("^\\h*// (\\w+)$", codeLines)
+#   codeOrg <- list()
+#   positions <- c(chunksTitles, length(codeLines))
+#   for (ch in seq_along(chunksTitles)) {
+#     title <- gsub("^\\h*// (\\w+)$", "\\1", codeLines[positions[ch]])
+#     codeOrg[[title]] <- c(
+#       codeOrg[[title]],
+#       codeLines[seq.int(positions[ch] + 1, positions[ch + 1] - 1)]
+#     )
+#   }
+#   return(codeOrg)
+# }
+# 
+# ReadParms <- function(x, ...) {
+#   UseMethod("ReadParms", x)
+# }
 
-  Q <- ifelse(
-    !is.null(dataStan[["stan"]][["Qrate"]]),
-    dataStan[["stan"]][["Qrate"]],
-    0L
-  ) +
-    ifelse(
-      !is.null(dataStan[["stan"]][["Qchoice"]]),
-      dataStan[["stan"]][["Qchoice"]],
-      0L
-    )
+# @noRd
+# @export
+# ReadParms.rate <- function(x) {
+#   list(
+#     parms = "  vector[Prate] betaRate;",
+#     prior = switch(
+#       x,
+#       "normal" = c(
+#         "  target += normal_lpdf(betaRate[1] | 0, 10);",
+#         "  target += std_normal_lpdf(betaRate[2: ]);"
+#       ),
+#       "t-student" = c(
+#         "  target += student_t_lpdf(betaRate[1] | 3, 0, 10);",
+#         "  target += student_t_lpdf(betaRate[2: ] | 3, 0, 1);"
+#       )
+#     )
+#   )
+# }
 
-  typeQ <- ifelse(Q > 1, "Qm", "Q1")
+# @noRd
+# @export
+# ReadParms.choice <- function(x) {
+#   list(
+#     parms = "  vector[Pchoice] betaChoice;",
+#     prior = switch(
+#       x,
+#       "normal" = "  target += std_normal_lpdf(betaChoice);",
+#       "t-student" = "  target += student_t_lpdf(betaChoice | 3, 0, 1);"
+#     )
+#   )
+# }
 
-  parmsFE <- do.call(
-    utils::getS3method("ReadParms", subModel),
-    list(x = prior)
-  )
-  parmsRE <- c(
-    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ), isCommon = TRUE),
-    SplitJoinChunk(subModel, "DNRE", paste0("parms", typeQ))
-  )
-  stanCode <- c(
-    "data {",
-    ReadStanChunkType(subModel, "DN", "data"),
-    "  int A; // number of senders",
-    ReadStanChunkType(subModel, "DNRE", "data"),
-    "}\nparameters {",
-    parmsFE[["pm"]],
-    parmsRE[["pm"]],
-    "}",
-    parmsRE[["tp"]],
-    "model {\n  //priors",
-    parmsFE[["pr"]],
-    parmsRE[["pr"]],
-    "  // loglikelihood",
-    parmsRE[["ll"]],
-    "}",
-    if (generateQuantities) parmsRE[["gq"]]
-  )
-
-  cmdstanr::write_stan_file(code = stanCode)
-}
-
-ReadStanChunk <- function(prefix, type, suffix, isType = TRUE) {
-  fileChunk <- paste0(
-    prefix, "_", if (isType) paste0(type, "_"), suffix, ".stan"
-  )
-  readLines(system.file("stan", fileChunk, package = "goldfish.latent"))
-}
-
-ReadStanChunkType <- function(
-    x, prefix, suffix, isCommon = FALSE
-) {
-  switch(
-    (!isCommon) * match(x, c("rate", "choice", "both")) + 1,
-    ReadStanChunk(prefix, "", suffix, isType = FALSE),
-    ReadStanChunk(prefix, "rt", suffix),
-    ReadStanChunk(prefix, "ch", suffix),
-    c(
-      ReadStanChunkType("rate", prefix, suffix, isCommon),
-      ReadStanChunkType("choice",  prefix, suffix, isCommon)
-    ),
-    stop("not recognize submodel")
-  )
-}
-
-ReadStanChunkLL <- function(x, prefix) {
-  suffix <- "ll"
-  switch(
-    match(x, c("rate", "choice", "both")),
-    ReadStanChunk(prefix, "rt", suffix),
-    ReadStanChunk(prefix, "ch", suffix),
-    ReadStanChunk(prefix, "bt", suffix),
-    stop("not recognize submodel")
-  )
-}
-SplitJoinChunk <- function(
-    x, prefix, suffix, isCommon = FALSE
-) {
-  codeLines <- ReadStanChunkType(x, prefix, suffix, isCommon)
-  chunksTitles <- grep("^\\h*// (\\w+)$", codeLines)
-  codeOrg <- list()
-  positions <- c(chunksTitles, length(codeLines))
-  for (ch in seq_along(chunksTitles)) {
-    title <- gsub("^\\h*// (\\w+)$", "\\1", codeLines[positions[ch]])
-    codeOrg[[title]] <- c(
-      codeOrg[[title]],
-      codeLines[seq.int(positions[ch] + 1, positions[ch + 1] - 1)]
-    )
-  }
-  return(codeOrg)
-}
-
-ReadParms <- function(x, ...) {
-  UseMethod("ReadParms", x)
-}
-
-ReadParms.rate <- function(x) {
-  list(
-    parms = "  vector[Prate] betaRate;",
-    prior = switch(
-      x,
-      "normal" = c(
-        "  target += normal_lpdf(betaRate[1] | 0, 10);",
-        "  target += std_normal_lpdf(betaRate[2: ]);"
-      ),
-      "t-student" = c(
-        "  target += student_t_lpdf(betaRate[1] | 3, 0, 10);",
-        "  target += student_t_lpdf(betaRate[2: ] | 3, 0, 1);"
-      )
-    )
-  )
-}
-
-ReadParms.choice <- function(x) {
-  list(
-    parms = "  vector[Pchoice] betaChoice;",
-    prior = switch(
-      x,
-      "normal" = "  target += std_normal_lpdf(betaChoice);",
-      "t-student" = "  target += student_t_lpdf(betaChoice | 3, 0, 1);"
-    )
-  )
-}
-
-ReadParms.both <- function(x) {
-  rate <- ReadParms.rate(x)
-  choice <- ReadParms.choice(x)
-  list(
-    parms = c(rate[["parms"]], choice[["parms"]]),
-    prior = c(rate[["prior"]], choice[["prior"]])
-  )
-}
+# @noRd
+# @export
+# ReadParms.both <- function(x) {
+#   rate <- ReadParms.rate(x)
+#   choice <- ReadParms.choice(x)
+#   list(
+#     parms = c(rate[["parms"]], choice[["parms"]]),
+#     prior = c(rate[["prior"]], choice[["prior"]])
+#   )
+# }
 
 
 
@@ -243,17 +250,17 @@ ReadParms.both <- function(x) {
 #'   respectively. It is possible to use an external function that has arguments
 #'   `N` and `fraction` and return a numerical vector of the samples
 #'   to keep.
-#' @param data output from [CreateDataSR()] or [CreateData()]
-#' @param fractionChoiceSet numerical value that indicates the proportion of
+#' @param data output from [make_data_hmm()] or [make_data_re()]
+#' @param fraction_choice_set numerical value that indicates the proportion of
 #'   alternatives to sample from the choice set or the compiting actors in the
 #'   choice and rate model, respectively.
-#' @param methodChoiceSet character value indicating the function name used to
+#' @param method_choice_set character value indicating the function name used to
 #'   generate the sample.
-#' @param fractionEvents numerical value that indicates the proportion of
+#' @param fraction_events numerical value that indicates the proportion of
 #'   events to sample. When the `data` object contains data for both sub-models,
 #'   a pair sample is selected, i.e., the sample events contains information of
 #'   the rate and choice sub-models.
-#' @param methodEvents character value indicating the function name used to
+#' @param method_events character value indicating the function name used to
 #'   generate the sample.
 #'
 #' @return an object with the same meta information as `data` with the sampled
@@ -261,26 +268,26 @@ ReadParms.both <- function(x) {
 #' @export
 #'
 #' @examples
-#' sampledData <- SampleData(data)
-SampleData <- function(
+#' sampledData <- sample_data(data)
+sample_data <- function(
     data,
-    fractionChoiceSet = 0.1, methodChoiceSet = c("srswor", "systematic"),
-    fractionEvents = 1, methodEvents = c("systematic", "srswor")
+    fraction_choice_set = 0.1, method_choice_set = c("srswor", "systematic"),
+    fraction_events = 1, method_events = c("systematic", "srswor")
 ) {
   
-  methodChoiceSet <- match.arg(methodChoiceSet, c("srswor", "systematic"))
-  methodEvents <- match.arg(methodEvents, c("systematic", "srswor"))
+  method_choice_set <- match.arg(method_choice_set, c("srswor", "systematic"))
+  method_events <- match.arg(method_events, c("systematic", "srswor"))
   
   stopifnot(
     inherits(data, "goldfish.latent.data"),
-    is.numeric(fractionChoiceSet) &&
-      length(fractionChoiceSet) == 1 &&
-      fractionChoiceSet > 0 && fractionChoiceSet <= 1,
-    is.numeric(fractionEvents) &&
-      length(fractionEvents) == 1 &&
-      fractionEvents > 0 && fractionEvents <= 1,
-    is.character(methodChoiceSet) && length(methodChoiceSet) == 1,
-    is.character(methodEvents) && length(methodEvents) == 1
+    is.numeric(fraction_choice_set) &&
+      length(fraction_choice_set) == 1 &&
+      fraction_choice_set > 0 && fraction_choice_set <= 1,
+    is.numeric(fraction_events) &&
+      length(fraction_events) == 1 &&
+      fraction_events > 0 && fraction_events <= 1,
+    is.character(method_choice_set) && length(method_choice_set) == 1,
+    is.character(method_events) && length(method_events) == 1
   )
 
   dataStan <- data$dataStan
@@ -297,10 +304,10 @@ SampleData <- function(
         expandedDF$event <- rep(seq_len(Trate), endRate - startRate + 1)
         expandedDF$selected <- seq_len(Nrate) %in% choseRate
 
-        if (fractionEvents < 1) {
+        if (fraction_events < 1) {
           sampleEvents <- do.call(
-            methodEvents,
-            list(N = Trate, fraction = fractionEvents)
+            method_events,
+            list(N = Trate, fraction = fraction_events)
           )
 
           if (attr(data, "subModel") == "both") {
@@ -323,14 +330,14 @@ SampleData <- function(
           rm(sampleEvents)
         }
 
-        if (fractionChoiceSet < 1) {
+        if (fraction_choice_set < 1) {
           expandedDF <- by(
             expandedDF,
             expandedDF[, c("selected", "event")],
             \(x) {
               sample <- do.call(
-                methodChoiceSet,
-                list(N = nrow(x), fraction = fractionChoiceSet)
+                method_choice_set,
+                list(N = nrow(x), fraction = fraction_choice_set)
               )
               x[sample, ]
             }
@@ -364,12 +371,12 @@ SampleData <- function(
           )
         )
 
-        if (fractionEvents < 1) {
+        if (fraction_events < 1) {
 
           if (attr(data, "subModel") != "both") {
             sampleEventsChoice <- do.call(
-              methodEvents,
-              list(N = Tchoice, fraction = fractionEvents)
+              method_events,
+              list(N = Tchoice, fraction = fraction_events)
             )
           }
 
@@ -379,14 +386,14 @@ SampleData <- function(
           rm(sampleEventsChoice)
         }
 
-        if (fractionChoiceSet < 1) {
+        if (fraction_choice_set < 1) {
           expandedDF <- by(
             expandedDF,
             expandedDF[, c("selected", "event")],
             \(x) {
               sample <- do.call(
-                methodChoiceSet,
-                list(N = nrow(x), fraction = fractionChoiceSet)
+                method_choice_set,
+                list(N = nrow(x), fraction = fraction_choice_set)
               )
               x[sample, ]
             }

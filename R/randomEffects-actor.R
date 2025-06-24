@@ -6,30 +6,33 @@
 #' the return object.
 #'
 #' The model formulation is composed of two parts: the fixed effect part
-#' `fixedEffects` and the random effect part `randomEffects`.
-#' The fixed effect formulation works as the formulation of models in `goldfish`.
+#' `fixed_effects` and the random effect part `random_effects`.
+#' The fixed effect formulation works as the formulation of models in
+#' [goldfish::estimate_dynam()].
 #' All the effects used here in the right hand side are considered to be fixed,
 #' hence, they won't have random effects.
 #' The random effects formulation considers the possibility to have more than
 #' one random effect, and that every random effect might be explain by actors'
 #' monadic statistics or covariates.
-#' A formula like `effect(network) ~ egoAlterInt(list(attrEgo, attrAlter))`
+#' A formula like
+#' `effect(network) ~ ego_alter_interaction(list(attr_ego, attr_alter))`
 #' indicates that the `effect(network)` is added to the model having
 #' random effects and those could be explain by the effects included on the
 #' right hand side.
 #'
-#' @param randomEffects a `list`, each component is a `formula` and represents a
-#' random effect to include in the model. Each `formula` has on the left hand
-#' side the effect specification that plays the role of random effect, and
-#' on the right hand side effects that would explain the variability of that
-#' random effect.
-#' @param fixedEffects a `formula` specification as in [goldfish::estimate()].
+#' @param random_effects a `list`, each component is a `formula` and
+#' represents a random effect to include in the model. Each `formula` has on the
+#' left hand side the effect specification that plays the role of random effect,
+#' and on the right hand side effects that would explain the variability of
+#' that random effect.
+#' @param fixed_effects a `formula` specification as in
+#' [goldfish::estimate_dynam()].
 #' The effects include in the right hand side play the role of fixed effects in
 #' the model.
 #' @param model Current version only support `"DyNAM"` model, enhancements
 #' on the code would allow to use `"REM"` model too.
-#' @param subModel Current version only support `"choice"` sub-model.
-#' @param supportConstraint a `formula` with only an effect that gives the
+#' @param sub_model Current version only support `"choice"` sub-model.
+#' @param support_constraint a `formula` with only an effect that gives the
 #' information of the restricted set to consider.
 #' In the case of the `"choice"` sub-model, it corresponds to the choice set
 #' available to received an event at each moment of time.
@@ -43,11 +46,12 @@
 #' In the case that some actors left or join the process at any point of time is
 #' better to use the `present` variable in the node data frame linking to it the
 #' time varying changes of composition of the actors set.
-#' @param preprocessArgs a list with additional preprocess arguments used by
-#' [goldfish::GatherPreprocessing()] to compute the changes statistics of the
-#' event sequence.
-#' @param progress logical argument passed to [goldfish::GatherPreprocessing()]
-#' to show the progress of the preprocessing of the events sequence.
+#' @param control_preprocessing a `preprocessing_opt.goldfish` object
+#'  output from a call to [goldfish::set_preprocessing_opt()] to compute
+#' the update statistics of the event sequence.
+#' @param progress logical argument passed to
+#' [goldfish::gather_model_data()] to show the progress of the preprocessing
+#' of the events sequence.
 #'
 #' @return an object of class `"goldfish.latent.data"` that contains
 #' a list with the following components.
@@ -63,55 +67,58 @@
 #' }
 #' @export
 #' @importFrom stats terms setNames as.formula model.matrix reformulate
-#' @importFrom goldfish GatherPreprocessing
+#' @importFrom goldfish gather_model_data
 #'
 #' @examples
 #' \donttest{
 #' library(goldfish)
 #' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
-#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+#'   link_events(change_event = calls, nodes = actors)
+#' callsDependent <- define_dependent_events(
+#'   events = calls, nodes = actors, default_network = callNetwork
 #' )
-#' data2stan <- CreateData(
-#'   randomEffects = list(inertia ~ 1),
-#'   fixedEffects = callsDependent ~ recip + trans
+#' socialEvolutionData <- make_data(callsDependent)
+#' data2stan <- make_data_re(
+#'   random_effects = list(inertia ~ 1),
+#'   fixed_effects = callsDependent ~ recip + trans,
+#'   data = socialEvolutionData
 #' )
 #' }
-CreateData <- function(
-  randomEffects,
-  fixedEffects,
+make_data_re <- function(
+  random_effects,
+  fixed_effects,
   model = c("DyNAM", "REM"),
-  subModel = c("choice", "rate", "choice_coordination"),
-  supportConstraint = NULL,
-  preprocessArgs = NULL,
+  sub_model = c("choice", "rate", "choice_coordination"),
+  data = NULL,
+  support_constraint = NULL,
+  control_preprocessing = NULL,
   progress = getOption("progress")
 ) {
   ### 0. check parameters----
   model <- match.arg(model)
-  subModel <- match.arg(subModel)
+  sub_model <- match.arg(sub_model)
 
   stopifnot(
     is.null(progress) || inherits(progress, "logical"),
-    is.null(preprocessArgs) ||
-      inherits(preprocessArgs, "list"),
-    inherits(randomEffects, "list"),
-    inherits(fixedEffects, "formula"),
-    is.null(supportConstraint) ||
-      inherits(supportConstraint, "formula")
+    is.null(control_preprocessing) ||
+      inherits(control_preprocessing, "preprocessing_opt.goldfish"),
+    inherits(random_effects, "list"),
+    inherits(fixed_effects, "formula"),
+    is.null(support_constraint) ||
+      inherits(support_constraint, "formula")
   )
 
   # setting initial values of some arguments
   if (is.null(progress)) progress <- FALSE
-
-  envir <- new.env()
-
+  if (is.null(control_preprocessing)) {
+    control_preprocessing <- goldfish::set_preprocessing_opt()
+  }
   # formula treatment
-  reTerms <- lapply(randomEffects, terms)
-  feTerms <- terms(fixedEffects)
-  cstrTerms <- if (!is.null(supportConstraint))
-    terms(supportConstraint) else NULL
+  reTerms <- lapply(random_effects, terms)
+  feTerms <- terms(fixed_effects)
+  cstrTerms <- if (!is.null(support_constraint))
+    terms(support_constraint) else NULL
 
   if (length(attr(cstrTerms, "term.labels")) > 1)
     stop(dQuote("supportConstraint"), " argument only works for one effect.")
@@ -126,8 +133,8 @@ CreateData <- function(
 
   # modify effects used to explain random effects to ego versions
   reTerms <- lapply(
-    randomEffects, ModifyFormulaRE,
-    fixedEffects = fixedEffects, envir = envir) |>
+    random_effects, ModifyFormulaRE,
+    fixedEffects = fixed_effects, envir = data) |>
     lapply(terms)
 
   xDyNAM <- Reduce(
@@ -141,7 +148,7 @@ CreateData <- function(
 
   formulaDyNAM <- reformulate(
     termsDyNAM,
-    response = as.character(fixedEffects[[2]])
+    response = as.character(fixed_effects[[2]])
   )
 
   # create a full matrix for filtering
@@ -157,13 +164,13 @@ CreateData <- function(
   #   effectDescription, sep = "_", joiner = "_"
   # )
     # process data
-  dataProcessed <- GatherPreprocessing(
+  dataProcessed <- goldfish::gather_model_data(
     formula = formulaDyNAM,
-    model = if (model == "DyNAM" && subModel == "choice") "DyNAMRE" else model,
-    subModel = subModel,
-    preprocessArgs = preprocessArgs,
+    model = if (model == "DyNAM" && sub_model == "choice") "DyNAMRE" else model,
+    sub_model = sub_model,
+    control_preprocessing = control_preprocessing,
     progress = progress,
-    envir = envir
+    data = data
   )
 
   nEvents <- length(dataProcessed$sender)
@@ -187,7 +194,7 @@ CreateData <- function(
   )
 
   # subset if constraint
-  if (!is.null(supportConstraint)) {
+  if (!is.null(support_constraint)) {
     cstrName <- namesEffects[attr(cstrTerms, "term.labels")]
     keep <- expandedDF[, cstrName] == 1
     expandedDF <- expandedDF[keep, !names(expandedDF) %in% cstrName]
@@ -238,7 +245,7 @@ CreateData <- function(
     T = nEvents,
     N = nTotal,
     P = ncol(Xmat),
-    Q = length(randomEffects),
+    Q = length(random_effects),
     A = nrow(sendersIx),
     start = idxEvents[1, ],
     end = idxEvents[2, ],
@@ -250,7 +257,7 @@ CreateData <- function(
     selected = expandedDF[, "selected"]
   )
 
-  suffix <- switch(subModel,
+  suffix <- switch(sub_model,
     choice = c("choice", "Choice"),
     rate = c("rate", "Rate"),
     choice_coordination = c("choice", "Choice")
@@ -323,23 +330,24 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
 #' log-likelihood. The marginal version uses a Gauss-Hermite quadrature
 #' approximation to integrate out the random effects
 #' \insertCite{Merkle2019}{goldfish.latent}. The code is an adaptation from
-#' the supplementary material of \insertCite{Merkle2019;textual}{goldfish.latent}.
+#' the supplementary material of
+#' \insertCite{Merkle2019;textual}{goldfish.latent}.
 #'
-#' @param cmdstanrSamples a `draws_array` or a `CmdStanFit` object with MCMC
+#' @param cmdstan_samples a `draws_array` or a `CmdStanFit` object with MCMC
 #'   samples from the posterior distribution. In the case of a `draws_array`
 #'   object is expected to have three dimensions corresponding to iterations,
 #'   chain and variables.
-#' @param dataStan a `list` output of a [CreateData()] call.
+#' @param data_stan a `list` output of a [CreateData()] call.
 #' @param type a `character` value. It indicates whether the log-likelihood
 #'   computation should return the `"conditional"` or the `"marginal"` version.
-#' @param nNodes an `integer`. The number of quadrature point to use in the
+#' @param n_nodes an `integer`. The number of quadrature point to use in the
 #'   Gauss-Hermite quadrature approximation use to integrate out the
 #'   random-effects.
-#' @param splitSize an `integer` or `NULL`. It is use when the `type` is
-#'   `"conditional"`. When it is `NULL`, the `splitSize` is set to have
+#' @param split_size an `integer` or `NULL`. It is use when the `type` is
+#'   `"conditional"`. When it is `NULL`, the `split_size` is set to have
 #'   roughly `4e4` rows sent to a processor when
 #'   the matrix `X`, containing the change statistics, has more
-#'   than `1e6`rows. If `X` has less than `1e6` rows, the `splitSize` is set
+#'   than `1e6`rows. If `X` has less than `1e6` rows, the `split_size` is set
 #'   in such way that every processor would have the same amount of rows to
 #'   process.
 #'   The default value is `NULL`.
@@ -366,17 +374,19 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
 #' library(goldfish)
 #' library(cmdstanr)
 #' data("Social_Evolution")
-#' callNetwork <- defineNetwork(nodes = actors, directed = TRUE) |>
-#'   linkEvents(changeEvent = calls, nodes = actors)
-#' callsDependent <- defineDependentEvents(
-#'   events = calls, nodes = actors, defaultNetwork = callNetwork
+#' callNetwork <- make_network(nodes = actors, directed = TRUE) |>
+#'   link_events(change_event = calls, nodes = actors)
+#' callsDependent <- define_dependent_events(
+#'   events = calls, nodes = actors, default_network = callNetwork
 #' )
-#' data2stan <- CreateDataModel(
-#'   randomEffects = list(inertia ~ 1),
-#'   fixedEffects = callsDependent ~ recip + trans
+#' socialEvolutionData <- make_data(callsDependent)
+#' data2stan <- make_data_re(
+#'   random_effects = list(inertia ~ 1),
+#'   fixed_effects = callsDependent ~ recip + trans,
+#'   data = socialEvolutionData
 #' )
 #'
-#' stanCode <- CreateModelCode(data2stan)
+#' stanCode <- make_model_code(data2stan)
 #'
 #' mod01 <- cmdstan_model(stanCode)
 #' mod01Samples <- mod01$sample(
@@ -385,78 +395,78 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
 #'   show_messages = FALSE
 #' )
 #'
-#' margLogLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan, spec = 4)
-#' condLogLikMod01 <- ComputeLogLikelihood(mod01Samples, data2stan,
+#' margLogLikMod01 <- compute_log_likelihood(mod01Samples, data2stan, spec = 4)
+#' condLogLikMod01 <- compute_log_likelihood(mod01Samples, data2stan,
 #'                                         type = "conditional", spec = 4)
 #' }
-ComputeLogLikelihood <- function(
-  cmdstanrSamples,
-  dataStan,
+compute_log_likelihood <- function(
+  cmdstan_samples,
+  data_stan,
   type = c("marginal", "conditional"),
-  nNodes = ifelse(type == "marginal", 11L, NULL),
-  splitSize = NULL,
+  n_nodes = ifelse(type == "marginal", 11L, NULL),
+  split_size = NULL,
   spec = parallel::detectCores() - 1,
   ...
 ) {
   stopifnot(
-    inherits(cmdstanrSamples, c("CmdStanFit", "draws")),
-    inherits(dataStan, "goldfish.latent.data"),
-    is.null(splitSize) || inherits(splitSize, "numeric") &&
-      length(splitSize) == 1
+    inherits(cmdstan_samples, c("CmdStanFit", "draws")),
+    inherits(data_stan, "goldfish.latent.data"),
+    is.null(split_size) || inherits(split_size, "numeric") &&
+      length(split_size) == 1
   )
 
   type <- match.arg(type)
 
 
-  if (dataStan[["dataStan"]][["Q"]] > 1)
+  if (data_stan[["dataStan"]][["Qchoice"]] > 1)
     stop("Likelihood computation for a model with more than one random-effect",
          " is not yet available.")
 
-  if (inherits(cmdstanrSamples, "CmdStanFit")) {
-    draws <- cmdstanrSamples$draws("gamma_raw")
+  if (inherits(cmdstan_samples, "CmdStanFit")) {
+    draws <- cmdstan_samples$draws("gamma_raw")
     drawsDimnames <- dimnames(draws)
     draws <- list(
-      beta = cmdstanrSamples$draws("beta"),
-      sigma = cmdstanrSamples$draws("sigma"),
+      beta = cmdstan_samples$draws("betaChoice"),
+      sigma = cmdstan_samples$draws("sigma"),
       gamma_raw = draws
     ) |>
       lapply(\(x) apply(x, 3, rbind))
-  } else if (length(dim(cmdstanrSamples)) == 3) {
-    drawsDimnames <- dimnames(cmdstanrSamples)
+  } else if (length(dim(cmdstan_samples)) == 3) {
+    drawsDimnames <- dimnames(cmdstan_samples)
 
-    variableNames <- dimnames(cmdstanrSamples)[[3]]
+    variableNames <- dimnames(cmdstan_samples)[[3]]
 
     draws <- list(
-      beta = cmdstanrSamples[, , grepl("^beta", variableNames)],
-      sigma = cmdstanrSamples[, , grepl("^sigma$", variableNames)],
-      gamma_raw = cmdstanrSamples[, , grepl("^gamma_raw", variableNames)]
+      beta = cmdstan_samples[, , grepl("^beta", variableNames)],
+      sigma = cmdstan_samples[, , grepl("^sigma$", variableNames)],
+      gamma_raw = cmdstan_samples[, , grepl("^gamma_raw", variableNames)]
     ) |>
       lapply(\(x) apply(x, 3, rbind))
   } else
     stop(
-      dQuote("cmdstanrSamples"),
+      dQuote("cmdstan_samples"),
       " argument expects a three dimensional ", dQuote("draws"), " object."
     )
 
-  if (is.null(splitSize) & type == "conditional") {
+  if (is.null(split_size) & type == "conditional") {
     if (!is.numeric(spec) || length(spec) != 1)
       stop(
-        "Please provide an integer number for", dQuote("splitSize"),
+        "Please provide an integer number for", dQuote("split_size"),
         " parameter. It's not possible to assign it value with",
         "the current value of", dQuote("spec")
       )
 
-    splitSize <- if (spec == 1) NULL else
+    split_size <- if (spec == 1) NULL else
       ifelse(
-        dataStan[["dataStan"]][["N"]] > 1e6,
-        4e4 / dataStan[["dataStan"]][["A"]],
-        dataStan[["dataStan"]][["T"]] / spec
+        data_stan[["dataStan"]][["Nchoice"]] > 1e6,
+        4e4 / data_stan[["dataStan"]][["A"]],
+        data_stan[["dataStan"]][["Tchoice"]] / spec
       ) |> floor()
 
-    eventsPerCore <- if (!is.null(splitSize)) {
+    eventsPerCore <- if (!is.null(split_size)) {
       parallel::splitIndices(
-        dataStan[["dataStan"]][["T"]],
-        floor(dataStan[["dataStan"]][["T"]] / splitSize)
+        data_stan[["dataStan"]][["Tchoice"]],
+        floor(data_stan[["dataStan"]][["Tchoice"]] / split_size)
       )  |>
         lapply(range)
     } else NULL
@@ -478,7 +488,7 @@ ComputeLogLikelihood <- function(
         seq_len(length(eventsPerCore)),
         fun = LogLikCondRE,
         draws = draws,
-        dataList = dataStan[["dataStan"]],
+        dataList = data_stan[["dataStan"]],
         eventsPerCore = eventsPerCore
       )
       logLik <- Reduce(f = cbind, x = logLik)
@@ -486,7 +496,7 @@ ComputeLogLikelihood <- function(
       logLik <- LogLikCondRE(
         eventsIter = NULL,
         draws = draws,
-        dataList = dataStan[["dataStan"]],
+        dataList = data_stan[["dataStan"]],
         eventsPerCore = NULL
       )
 
@@ -495,8 +505,8 @@ ComputeLogLikelihood <- function(
   } else if (type == "marginal") {
     logLik <- mllDyNAMChoice(
       draws = draws,
-      dataList = dataStan[["dataStan"]],
-      nNodes = nNodes,
+      dataList = data_stan[["dataStan"]],
+      nNodes = n_nodes,
       cl = cl
     )
 
@@ -547,7 +557,7 @@ mllDyNAMChoice <- function(draws, dataList, nNodes, cl = NULL) {
   nDraws <- nrow(gamma)
 
   # add helper data
-  dataList$senderEvent <- dataList$sender[dataList$start]
+  dataList$senderEvent <- dataList$senderChoice[dataList$startChoice]
   # Function to compute the approximate marginal log-lik for sender
   fMarginal <- function(sender, draws, mcmcStat, dataList, quad, nNodes) {
     events <- which(dataList$senderEvent == sender)
@@ -562,28 +572,33 @@ mllDyNAMChoice <- function(draws, dataList, nNodes, cl = NULL) {
     # mll <- list()
     # contador <- 1
     for (event in events) {
-      keep <- seq.int(dataList$start[event], dataList$end[event])
-      xb <- tcrossprod(dataList$X[keep, ], draws$beta)
-      choice <- which(dataList$chose[event] == keep)
+      keep <- seq.int(dataList$startChoice[event], dataList$endChoice[event])
+      xb <- tcrossprod(dataList$Xchoice[keep, ], draws$beta)
+      choice <- which(dataList$choseChoice[event] == keep)
 
-      Z <- dataList$Z[keep]
+      Z <- dataList$Zchoice[keep]
 
       mll <- mll +
         sapply(
           seq.int(nNodes),
           function(i) {
             utility <- sweep(xb, 1, Z * adaptNodes[i], FUN = "+")
-            # # the log of the prob is utility - logSumExp of the utility choice set
+            # # the log of the prob is utility - logSumExp: utility choice set
             utility[choice, ] - colLogSumExps(utility)
 
           }
         )
     }
     # # l_c + log(prob prior)
-    mll <- mll + outer(draws$sigma[, 1], adaptNodes, function(x, y) dnorm(y, sd = x, log = TRUE))
+    mll <- mll + outer(
+      draws$sigma[, 1],
+      adaptNodes,
+      \(x, y) dnorm(y, sd = x, log = TRUE)
+    )
     # dnorm(adaptNodes[i], sd = draws$sigma, log = TRUE)
 
-    # log(\prod \sum_{qdr points} lik (qdr point)) = \sum logSumExp( log(log_lik (qdr point)))
+    # log(\prod \sum_{qdr points} lik (qdr point)) =
+    # \sum logSumExp( log(log_lik (qdr point)))
     # l_c + log(prob prior) + log(adapted weight)
     rowLogSumExps(sweep(mll, 2, quad$logWA + log(mcmcSd), FUN = "+"))
   }
@@ -616,22 +631,22 @@ mllDyNAMChoice <- function(draws, dataList, nNodes, cl = NULL) {
 LogLikCondWORE <- function(eventsIter, draws, dataList, eventsPerCore = NULL) {
   if (!is.null(eventsIter)) {
     events <- eventsPerCore[[eventsIter]]
-    startI <- dataList$start[head(events, 1)]
-    endI <- dataList$end[tail(events, 1)]
-    X <- dataList$X[seq.int(startI, endI), ]
+    startI <- dataList$startChoice[head(events, 1)]
+    endI <- dataList$endChoice[tail(events, 1)]
+    X <- dataList$Xchoice[seq.int(startI, endI), ]
 
     seqEventsKeep <- seq.int(head(events, 1), tail(events, 1))
-    start <- dataList$start[seqEventsKeep] - (startI - 1)
-    end <- dataList$end[seqEventsKeep] - (startI - 1)
-    chose <- dataList$chose[seqEventsKeep] - (startI - 1)
+    start <- dataList$startChoice[seqEventsKeep] - (startI - 1)
+    end <- dataList$endChoice[seqEventsKeep] - (startI - 1)
+    chose <- dataList$choseChoice[seqEventsKeep] - (startI - 1)
 
     nE <- length(seqEventsKeep)
   } else {
-    X <- dataList$X
-    start <- dataList$start
-    end <- dataList$end
-    chose <- dataList$chose
-    nE <- dataList$T
+    X <- dataList$Xchoice
+    start <- dataList$startChoice
+    end <- dataList$endChoice
+    chose <- dataList$choseChoice
+    nE <- dataList$Tchoice
   }
 
   xb <- tcrossprod(X, draws)
@@ -652,26 +667,26 @@ LogLikCondWORE <- function(eventsIter, draws, dataList, eventsPerCore = NULL) {
 LogLikCondRE <- function(eventsIter, draws, dataList, eventsPerCore = NULL) {
   if (!is.null(eventsIter)) {
     events <- eventsPerCore[[eventsIter]]
-    startI <- dataList$start[head(events, 1)]
-    endI <- dataList$end[tail(events, 1)]
+    startI <- dataList$startChoice[head(events, 1)]
+    endI <- dataList$endChoice[tail(events, 1)]
     seqDataKeep <- seq.int(startI, endI)
-    X <- dataList$X[seqDataKeep, ]
-    Z <- dataList$Z[seqDataKeep]
-    sender <- dataList$sender[seqDataKeep]
+    X <- dataList$Xchoice[seqDataKeep, ]
+    Z <- dataList$Zchoice[seqDataKeep]
+    sender <- dataList$senderChoice[seqDataKeep]
 
     seqEventsKeep <- seq.int(head(events, 1), tail(events, 1))
-    start <- dataList$start[seqEventsKeep] - (startI - 1)
-    end <- dataList$end[seqEventsKeep] - (startI - 1)
-    chose <- dataList$chose[seqEventsKeep] - (startI - 1)
+    start <- dataList$startChoice[seqEventsKeep] - (startI - 1)
+    end <- dataList$endChoice[seqEventsKeep] - (startI - 1)
+    chose <- dataList$choseChoice[seqEventsKeep] - (startI - 1)
 
     nE <- length(seqEventsKeep)
   } else {
-    X <- dataList$X
-    Z <- dataList$Z
-    sender <- dataList$sender
-    start <- dataList$start
-    end <- dataList$end
-    chose <- dataList$chose
+    X <- dataList$Xchoice
+    Z <- dataList$Zchoice
+    sender <- dataList$senderChoice
+    start <- dataList$startChoice
+    end <- dataList$endChoice
+    chose <- dataList$choseChoice
     nE <- dataList$T
   }
 

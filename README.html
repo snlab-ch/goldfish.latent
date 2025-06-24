@@ -587,12 +587,12 @@ code .in { color: #008080; }
 </style>
 <style>
 body {
-  box-sizing: border-box;
-  min-width: 200px;
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 45px;
-  padding-top: 0px;
+box-sizing: border-box;
+min-width: 200px;
+max-width: 980px;
+margin: 0 auto;
+padding: 45px;
+padding-top: 0px;
 }
 </style>
 
@@ -617,38 +617,42 @@ are made using Hamiltonian Chain Monte Carlo as implemented in <a href="https://
 <h2 id="installation">Installation</h2>
 <p>You can install the development version of goldfish.latent like
 so:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;snlab-ch/goldfish.latent&quot;</span>, <span class="at">build_vignettes =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;snlab-ch/goldfish.latent&quot;</span>, <span class="at">build_vignettes =</span> <span class="cn">TRUE</span>)</span></code></pre></div>
 <h2 id="example">Example</h2>
 <p>The first model introduced in <code>goldfish.latent</code> is the
 DyNAM with random effects. Model formulation allows to include monadic
 statistic or actors’ covariates to explain the variability of the random
 effects.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(goldfish.latent)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"># using cmdstanr for getting posterior samples and </span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(cmdstanr)</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co"># using goldfish social evolution data set</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(goldfish)</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;Social_Evolution&quot;</span>)</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>callNetwork <span class="ot">&lt;-</span> <span class="fu">defineNetwork</span>(<span class="at">nodes =</span> actors, <span class="at">directed =</span> <span class="cn">TRUE</span>) <span class="sc">|&gt;</span></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a> <span class="fu">linkEvents</span>(<span class="at">changeEvent =</span> calls, <span class="at">nodes =</span> actors)</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>callsDependent <span class="ot">&lt;-</span> <span class="fu">defineDependentEvents</span>(</span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a> <span class="at">events =</span> calls, <span class="at">nodes =</span> actors, <span class="at">defaultNetwork =</span> callNetwork</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>data2stan <span class="ot">&lt;-</span> <span class="fu">CreateData</span>(</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a> <span class="at">randomEffects =</span> <span class="fu">list</span>(inertia <span class="sc">~</span> <span class="dv">1</span>),</span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a> <span class="at">fixedEffects =</span> callsDependent <span class="sc">~</span> recip <span class="sc">+</span> trans</span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>stanCode <span class="ot">&lt;-</span> <span class="fu">CreateModelCode</span>(data2stan)</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>mod01 <span class="ot">&lt;-</span> <span class="fu">cmdstan_model</span>(stanCode)</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>mod01Samples <span class="ot">&lt;-</span> mod01<span class="sc">$</span><span class="fu">sample</span>(</span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> data2stan[[<span class="st">&quot;dataStan&quot;</span>]],</span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">parallel_chains =</span> <span class="dv">4</span>, <span class="at">chains =</span> <span class="dv">4</span>,  <span class="at">iter_warmup =</span> <span class="dv">500</span>, <span class="at">iter_sampling =</span> <span class="dv">500</span>,</span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">show_messages =</span> <span class="cn">FALSE</span></span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">library</span>(goldfish.latent)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co"># using cmdstanr for getting posterior samples and </span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="fu">library</span>(cmdstanr)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="fu">set_cmdstan_path</span>()</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="fu">cmdstan_version</span>()</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="co"># using goldfish social evolution data set</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="fu">library</span>(goldfish)</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;Social_Evolution&quot;</span>)</span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>callNetwork <span class="ot">&lt;-</span> <span class="fu">make_network</span>(<span class="at">nodes =</span> actors, <span class="at">directed =</span> <span class="cn">TRUE</span>) <span class="sc">|&gt;</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a> <span class="fu">link_events</span>(<span class="at">change_event =</span> calls, <span class="at">nodes =</span> actors)</span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>callsDependent <span class="ot">&lt;-</span> <span class="fu">make_dependent_events</span>(</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a> <span class="at">events =</span> calls, <span class="at">nodes =</span> actors, <span class="at">default_network =</span> callNetwork</span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a>)</span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a>socialEvolutionData <span class="ot">&lt;-</span> <span class="fu">make_data</span>(callsDependent)</span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a>data2stan <span class="ot">&lt;-</span> <span class="fu">make_data_re</span>(</span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a> <span class="at">random_effects =</span> <span class="fu">list</span>(inertia <span class="sc">~</span> <span class="dv">1</span>),</span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a> <span class="at">fixed_effects =</span> callsDependent <span class="sc">~</span> recip <span class="sc">+</span> trans,</span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a> <span class="at">data =</span> socialEvolutionData</span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a>)</span>
+<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a></span>
+<span id="cb2-23"><a href="#cb2-23" tabindex="-1"></a>stanCode <span class="ot">&lt;-</span> <span class="fu">make_model_code</span>(data2stan)</span>
+<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a></span>
+<span id="cb2-25"><a href="#cb2-25" tabindex="-1"></a>mod01 <span class="ot">&lt;-</span> <span class="fu">cmdstan_model</span>(stanCode)</span>
+<span id="cb2-26"><a href="#cb2-26" tabindex="-1"></a>mod01Samples <span class="ot">&lt;-</span> mod01<span class="sc">$</span><span class="fu">sample</span>(</span>
+<span id="cb2-27"><a href="#cb2-27" tabindex="-1"></a>  <span class="at">data =</span> data2stan[[<span class="st">&quot;dataStan&quot;</span>]],</span>
+<span id="cb2-28"><a href="#cb2-28" tabindex="-1"></a>  <span class="at">parallel_chains =</span> <span class="dv">4</span>, <span class="at">chains =</span> <span class="dv">4</span>,  <span class="at">iter_warmup =</span> <span class="dv">500</span>, <span class="at">iter_sampling =</span> <span class="dv">500</span>,</span>
+<span id="cb2-29"><a href="#cb2-29" tabindex="-1"></a>  <span class="at">show_messages =</span> <span class="cn">FALSE</span></span>
+<span id="cb2-30"><a href="#cb2-30" tabindex="-1"></a>)</span></code></pre></div>
 <p>Using <code>cmdstanr</code> functionalities makes easier fit to use
 summary and plotting function from packages that works with MCMC
 posterior samples. For the summary of the posterior samples
@@ -656,50 +660,53 @@ posterior samples. For the summary of the posterior samples
 package. Plots from the posterior samples can be done using, for
 example, <a href="https://mc-stan.org/bayesplot/"><code>bayesplot</code></a>
 package.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>mod01Samples<span class="sc">$</span><span class="fu">summary</span>(<span class="st">&quot;beta&quot;</span>)</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; # A tibble: 3 × 10</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   variable   mean median    sd   mad     q5    q95  rhat ess_bulk ess_tail</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;     &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;    &lt;dbl&gt;    &lt;dbl&gt;</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1 beta[1]   4.94   4.92  0.424 0.394  4.30  5.67   1.00      793.     936.</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 2 beta[2]   1.63   1.63  0.207 0.202  1.30  1.98   1.00     2881.    1372.</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 3 beta[3]  -0.272 -0.268 0.211 0.204 -0.640 0.0649 0.999    3188.    1797.</span></span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># names fixed effects coincides with colnames(data2stan$dataStan$X)</span></span></code></pre></div>
-<p>The <code>ComputeLogLikelihood()</code> function allows computing the
-marginal or conditional log-likelihood for the model using MCMC samples
-from the posterior distribution. Parallel computation using
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a>mod01Samples<span class="sc">$</span><span class="fu">summary</span>(<span class="st">&quot;betaChoice&quot;</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="co">#&gt; # A tibble: 3 × 10</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co">#&gt;   variable        mean median    sd   mad     q5    q95  rhat ess_bulk ess_tail</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;          &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;    &lt;dbl&gt;    &lt;dbl&gt;</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt; 1 betaChoice[1]  4.30   4.33  0.406 0.385  3.63  4.92    1.00     842.    1126.</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; 2 betaChoice[2]  1.65   1.65  0.200 0.203  1.33  1.98    1.00    2771.    1496.</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; 3 betaChoice[3] -0.251 -0.241 0.217 0.218 -0.622 0.0853  1.00    3489.    1445.</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>  <span class="co"># names fixed effects coincides with colnames(data2stan$dataStan$X)</span></span></code></pre></div>
+<p>The <code>compute_log_likelihood()</code> function allows computing
+the marginal or conditional log-likelihood for the model using MCMC
+samples from the posterior distribution. Parallel computation using
 <code>parallel</code> package is possible. Using the <a href="https://mc-stan.org/loo/"><code>loo</code></a> functionalities is
 possible to compute the Watanabe Information Criterion
 <code>waic()</code> and the Leave-One-Out approximation using Pareto
 smoothed importance sampling <code>loo()</code>. Those information
 criteria can be used to compare models using
 <code>loo_compare()</code>.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>logLikMod01 <span class="ot">&lt;-</span> <span class="fu">ComputeLogLikelihood</span>(mod01Samples, data2stan, <span class="at">spec =</span> <span class="dv">4</span>)</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co"># loo and waic computation using the marginal</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(loo)</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>relEff <span class="ot">&lt;-</span> <span class="fu">relative_eff</span>(<span class="fu">exp</span>(logLikMod01))</span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>looM01 <span class="ot">&lt;-</span> <span class="fu">loo</span>(logLikMod01, <span class="at">r_eff =</span> relEff)</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Warning: Some Pareto k diagnostic values are too high. See help(&#39;pareto-k-diagnostic&#39;) for details.</span></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>looM01</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Computed from 2000 by 34 log-likelihood matrix</span></span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;          Estimate    SE</span></span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; elpd_loo   -679.8 112.0</span></span>
-<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; p_loo        17.7   8.0</span></span>
-<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; looic      1359.7 224.1</span></span>
-<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; ------</span></span>
-<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Monte Carlo SE of elpd_loo is NA.</span></span>
-<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Pareto k diagnostic values:</span></span>
-<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;                          Count Pct.    Min. n_eff</span></span>
-<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; (-Inf, 0.5]   (good)     28    82.4%   231       </span></span>
-<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  (0.5, 0.7]   (ok)        0     0.0%   &lt;NA&gt;      </span></span>
-<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;    (0.7, 1]   (bad)       3     8.8%   8         </span></span>
-<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;    (1, Inf)   (very bad)  3     8.8%   1770      </span></span>
-<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; See help(&#39;pareto-k-diagnostic&#39;) for details.</span></span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a>logLikMod01 <span class="ot">&lt;-</span> <span class="fu">compute_log_likelihood</span>(mod01Samples, data2stan, <span class="at">spec =</span> <span class="dv">4</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co"># loo and waic computation using the marginal</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="fu">library</span>(loo)</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co">#&gt; This is loo version 2.8.0</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt; - Online documentation and vignettes at mc-stan.org/loo</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="co">#&gt; - As of v2.0.0 loo defaults to 1 core but we recommend using as many as possible. Use the &#39;cores&#39; argument or set options(mc.cores = NUM_CORES) for an entire session.</span></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>relEff <span class="ot">&lt;-</span> <span class="fu">relative_eff</span>(<span class="fu">exp</span>(logLikMod01))</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>looM01 <span class="ot">&lt;-</span> <span class="fu">loo</span>(logLikMod01, <span class="at">r_eff =</span> relEff)</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a><span class="co">#&gt; Warning: Some Pareto k diagnostic values are too high. See help(&#39;pareto-k-diagnostic&#39;) for details.</span></span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>looM01</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a><span class="co">#&gt; Computed from 2000 by 34 log-likelihood matrix.</span></span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a><span class="co">#&gt;          Estimate    SE</span></span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a><span class="co">#&gt; elpd_loo   -681.6 111.8</span></span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a><span class="co">#&gt; p_loo        18.1   8.2</span></span>
+<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a><span class="co">#&gt; looic      1363.3 223.5</span></span>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co">#&gt; ------</span></span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt; MCSE of elpd_loo is NA.</span></span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt; MCSE and ESS estimates assume MCMC draws (r_eff in [0.3, 1.3]).</span></span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt; Pareto k diagnostic values:</span></span>
+<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a><span class="co">#&gt;                          Count Pct.    Min. ESS</span></span>
+<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a><span class="co">#&gt; (-Inf, 0.7]   (good)     28    82.4%   155     </span></span>
+<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a><span class="co">#&gt;    (0.7, 1]   (bad)       2     5.9%   &lt;NA&gt;    </span></span>
+<span id="cb4-28"><a href="#cb4-28" tabindex="-1"></a><span class="co">#&gt;    (1, Inf)   (very bad)  4    11.8%   &lt;NA&gt;    </span></span>
+<span id="cb4-29"><a href="#cb4-29" tabindex="-1"></a><span class="co">#&gt; See help(&#39;pareto-k-diagnostic&#39;) for details.</span></span></code></pre></div>
 <h2 id="code-of-conduct">Code of Conduct</h2>
 <p>Please note that the <code>goldfish.latent</code> project is released
 with a <a href="https://contributor-covenant.org/version/2/1/CODE_OF_CONDUCT.html">Contributor

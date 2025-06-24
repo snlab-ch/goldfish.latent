@@ -1,57 +1,65 @@
 test_that("warnings and stops", {
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ 1),
-      fixedEffects = depNetwork ~ recip + trans,
-      model = "dynam"
+    make_data_re(
+      random_effects = list(inertia ~ 1),
+      fixed_effects = depNetwork ~ recip + trans,
+      model = "dynam",
+      data = socialEvolutionData
     )
   )
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ 1),
-      fixedEffects = depNetwork ~ recip + trans,
+    make_data_re(
+      random_effects = list(inertia ~ 1),
+      fixed_effects = depNetwork ~ recip + trans,
       model = "REM",
-      subModel = "choose"
+      sub_model = "choose",
+      data = socialEvolutionData
     )
   )
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ 1),
-      fixedEffects = depNetwork ~ recip + trans,
+    make_data_re(
+      random_effects = list(inertia ~ 1),
+      fixed_effects = depNetwork ~ recip + trans,
       model = "REM",
-      subModel = "choice_coordination"
+      sub_model = "choice_coordination",
+      data = socialEvolutionData
     )
   )
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ 1, recip ~ 1),
-      fixedEffects = depNetwork ~ trans
+    make_data_re(
+      random_effects = list(inertia ~ 1, recip ~ 1),
+      fixed_effects = depNetwork ~ trans,
+      data = socialEvolutionData
     )
   )
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ 1),
-      fixedEffects = depNetwork ~ recip * trans
+    make_data_re(
+      random_effects = list(inertia ~ 1),
+      fixed_effects = depNetwork ~ recip * trans,
+      data = socialEvolutionData
     )
   )
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ ego(actorsEx$attr1) * outdeg),
-      fixedEffects = depNetwork ~ recip + trans
+    make_data_re(
+      random_effects = list(inertia ~ ego(actorsEx$attr1) * outdeg),
+      fixed_effects = depNetwork ~ recip + trans,
+      data = socialEvolutionData
     )
   )
   expect_error(
-    CreateData(
-      randomEffects = list(inertia ~ 1),
-      fixedEffects = depNetwork ~ recip + trans,
-      supportConstraint = ~ tie(networkExog) + recip(networkExog)
+    make_data_re(
+      random_effects = list(inertia ~ 1),
+      fixed_effects = depNetwork ~ recip + trans,
+      support_constraint = ~ tie(networkExog) + recip(networkExog),
+      data = socialEvolutionData
     )
   )
 })
 test_that("choice empty model RE", {
-  res <- CreateData(
-      randomEffects = list(inertia ~ 1),
-      fixedEffects = depNetwork ~ recip + trans
+  res <- make_data_re(
+      random_effects = list(inertia ~ 1),
+      fixed_effects = depNetwork ~ recip + trans,
+      data = socialEvolutionData
   )
   expect_type(res, "list")
   expect_length(res, 4)
@@ -72,9 +80,10 @@ test_that("choice empty model RE", {
   expect_equal(res$dataStan$A, nrow(actorsEx))
 })
 test_that("choice RE with expl effects", {
-  res <- CreateData(
-    randomEffects = list(inertia ~ outdeg),
-    fixedEffects = depNetwork ~ recip + trans
+  res <- make_data_re(
+    random_effects = list(inertia ~ outdeg),
+    fixed_effects = depNetwork ~ recip + trans,
+    data = socialEvolutionData
   )
   expect_type(res, "list")
   expect_length(res, 4)
@@ -101,10 +110,10 @@ test_that("save code", {
     class = "goldfish.latent.data",
     model = "DyNAM", subModel = "rate"
   )
-  expect_error(CreateModelCode(list()))
-  expect_error(CreateModelCode(data))
+  expect_error(make_model_code(list()))
+  expect_error(make_model_code(data))
   attr(data, "subModel") <- "choice"
-  outCode <- CreateModelCode(data)
+  outCode <- make_model_code(data)
   expect_length(outCode, 1)
   expect_type(outCode, "character")
 })
