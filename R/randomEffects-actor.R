@@ -296,8 +296,8 @@ ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
     return(reFormula)
   }
 
-  depName <- goldfish:::getDependentName(fixedEffects)
-  defaultNetworkName <- attr(get(depName, envir = envir), "defaultNetwork")
+  depName <- goldfish:::get_dependent_name(fixedEffects)
+  defaultNetworkName <- attr(get(depName, envir = envir), "default_network")
 
   # modify calls
   effectForMod <- vapply(
