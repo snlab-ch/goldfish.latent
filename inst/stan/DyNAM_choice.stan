@@ -19,26 +19,30 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 data {
-  int Nchoice; // number of events * choice set (actors - 1)
-  int Tchoice; // number of events
-  int Pchoice; // number of covariates
+  int N_choice; // number of events * choice set (actors - 1)
+  int T_choice; // number of events
+  int P_choice; // number of covariates
 
-  array[Tchoice] int<lower = 1, upper = Nchoice> choseChoice; // position receiver chose
-  matrix[Nchoice, Pchoice] Xchoice;
+  matrix[N_choice, P_choice] X_choice;
+  // position receiver chose
+  array[T_choice] int<lower = 1, upper = N_choice> chose_choice; 
 
-  array[Tchoice] int<lower = 1, upper = Nchoice> startChoice; // the starting observation for each event
-  array[Tchoice] int<lower = 1, upper = Nchoice> endChoice; // the ending observation for each event
+  // start and end position for each event
+  array[T_choice] int<lower = 1, upper = N_choice> start_choice;
+  array[T_choice] int<lower = 1, upper = N_choice> end_choice;
 }
 parameters {
-  vector[Pchoice] beta;
+  vector[P_choice] beta_choice;
 }
 model {
   // priors
-  target += normal_lpdf(beta | 0, 4);
+  target += normal_lpdf(beta_choice | 0, 4);
 
   // helper for likelihood
-  vector[Nchoice] xb;
-  xb = Xchoice * beta;
+  vector[N_choice] xb_choice;
+  xb_choice = X_choice * beta_choice;
 
-  for(t in 1:Tchoice) target += xb[choseChoice[t]] - log_sum_exp(xb[startChoice[t]:endChoice[t]]);
+  for(t in 1:T_choice)
+    target += xb_choice[chose_choice[t]] -
+      log_sum_exp(xb_choice[start_choice[t]:end_choice[t]]);
 }

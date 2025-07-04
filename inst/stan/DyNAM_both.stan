@@ -5,64 +5,64 @@
 //
 data {
   //
-  int Nrate; // number of events * present actors
-  int Trate; // number of events
-  int Prate; // number of covariates
+  int N_rate; // number of events * present actors
+  int T_rate; // number of events
+  int P_rate; // number of covariates
 
-  array[Trate] int<lower = 0, upper = Nrate> choseRate; // position sender
-  matrix[Nrate, Prate] Xrate;
-
-  // the starting and ending index observation for each event
-  array[Trate] int<lower = 1, upper = Nrate> startRate;
-  array[Trate] int<lower = 1, upper = Nrate> endRate;
-
-  //
-  array[Trate] real<lower = 0> timespan;
-  array[Trate] int<lower = 0, upper = 1> isDependent;
-
-  real offsetInt;
-  //
-  int Nchoice; // number of events * present actors
-  int Tchoice; // number of events
-  int Pchoice; // number of covariates
-
-  array[Tchoice] int<lower = 1, upper = Nrate> choseChoice; // position sender
-  matrix[Nchoice, Pchoice] Xchoice;
+  array[T_rate] int<lower = 0, upper = N_rate> chose_rate; // position sender
+  matrix[N_rate, P_rate] X_rate;
 
   // the starting and ending index observation for each event
-  array[Tchoice] int<lower = 1, upper = Nchoice> startChoice;
-  array[Tchoice] int<lower = 1, upper = Nchoice> endChoice;
+  array[T_rate] int<lower = 1, upper = N_rate> start_rate;
+  array[T_rate] int<lower = 1, upper = N_rate> end_rate;
+
+  //
+  array[T_rate] real<lower = 0> timespan;
+  array[T_rate] int<lower = 0, upper = 1> is_dependent;
+
+  real offset_int;
+  //
+  int N_choice; // number of events * present actors
+  int T_choice; // number of events
+  int P_choice; // number of covariates
+
+  array[T_choice] int<lower = 1, upper = N_choice> chose_choice; // pos receiver
+  matrix[N_choice, P_choice] X_choice;
+
+  // the starting and ending index observation for each event
+  array[T_choice] int<lower = 1, upper = N_choice> start_choice;
+  array[T_choice] int<lower = 1, upper = N_choice> end_choice;
 }
 parameters {
-  vector[Prate] betaRate;
-  vector[Pchoice] betaChoice;
+  vector[P_rate] beta_rate;
+  vector[P_choice] beta_choice;
 }
 model {
   // priors
-  target += normal_lpdf(betaRate[1] | 0, 5);
-  target += std_normal_lpdf(betaRate[2 : ]);
-  target += std_normal_lpdf(betaChoice);
+  target += normal_lpdf(beta_rate[1] | 0, 5);
+  target += std_normal_lpdf(beta_rate[2 : ]);
+  target += std_normal_lpdf(beta_choice);
 
   // helper for likelihood
-  vector[Trate] logLik;
+  vector[T_rate] logLik;
   {
-    vector[Nrate] xbRate;
-    xbRate = Xrate * betaRate + offsetInt;
+    vector[N_rate] xb_rate;
+    xb_rate = X_rate * beta_rate + offset_int;
 
-    vector[Nchoice] xbChoice;
-    xbChoice = Xchoice * betaChoice;
+    vector[N_choice] xb_choice;
+    xb_choice = X_choice * beta_choice;
 
-    int tChoice = 1;
-    for (t in 1:Trate) {
+    int t_choice = 1;
+    for (t in 1:T_rate) {
       logLik[t] = -timespan[t] *
-        exp(log_sum_exp(xbRate[startRate[t]:endRate[t]]));
+        exp(log_sum_exp(xb_rate[start_rate[t]:end_rate[t]]));
 
-      if (isDependent[t]) {
-        logLik[t] += xbRate[choseRate[t]] +
-          xbChoice[choseChoice[tChoice]] -
-          log_sum_exp(xbChoice[startChoice[tChoice]:endChoice[tChoice]]);
+      if (is_dependent[t]) {
+        logLik[t] += xb_rate[chose_rate[t]] +
+          xb_choice[chose_choice[t_choice]] -
+          log_sum_exp(xb_choice[start_choice[t_choice]:end_choice[t_choice]]);
 
-        tChoice += 1;
+        t_choice += 1;
       }
     }
   }

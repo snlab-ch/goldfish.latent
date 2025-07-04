@@ -68,6 +68,7 @@
 #' @export
 #' @importFrom stats terms setNames as.formula model.matrix reformulate
 #' @importFrom goldfish gather_model_data
+#' @importFrom cli cli_abort
 #'
 #' @examples
 #' \donttest{
@@ -114,58 +115,23 @@ make_data_re <- function(
   if (is.null(control_preprocessing)) {
     control_preprocessing <- goldfish::set_preprocessing_opt()
   }
+
+  # dependent network
+  dep_net_name <- attr(data[[deparse(fixed_effects[[2]])]], "default_network")
+
   # formula treatment
-  reTerms <- lapply(random_effects, terms)
-  feTerms <- terms(fixed_effects)
-  cstrTerms <- if (!is.null(support_constraint))
-    terms(support_constraint) else NULL
-
-  if (length(attr(cstrTerms, "term.labels")) > 1)
-    stop(dQuote("supportConstraint"), " argument only works for one effect.")
-
-  if (any(attr(feTerms, "order") != 1))
-    stop(dQuote("fixedEffects"),
-         "formula argument doesn't support interactions yet")
-
-  if (any(vapply(reTerms, \(x) any(attr(x, "order") != 1), logical(1))))
-    stop(dQuote("fixedEffects"),
-         "formula argument doesn't support interactions yet")
-
-  # modify effects used to explain random effects to ego versions
-  reTerms <- lapply(
-    random_effects, ModifyFormulaRE,
-    fixedEffects = fixed_effects, envir = data) |>
-    lapply(terms)
-
-  xDyNAM <- Reduce(
-    c,
-    lapply(reTerms, \(x) c(attr(x, "term.labels"), deparse(x[[2]])))
-  )
-  reDyNAM <- vapply(reTerms, \(x) Reduce(paste, deparse(x[[2]])), character(1))
-
-  termsDyNAM <- c(xDyNAM, attr(feTerms, "term.labels"),
-                  attr(cstrTerms, "term.labels")) |> unique()
-
-  formulaDyNAM <- reformulate(
-    termsDyNAM,
-    response = as.character(fixed_effects[[2]])
+  set_re_as_ego <- model == "DyNAM" && sub_model != "rate"
+  extended_formula <- modify_formula(
+    formula = fixed_effects,
+    support_constraint = support_constraint,
+    random_effects = random_effects,
+    re_as_ego = set_re_as_ego,
+    dep_net_name = dep_net_name
   )
 
   # create a full matrix for filtering
-    # get names from formula
-  # parsedFormula <- goldfish:::parseFormula(formula = formulaDyNAM)
-  # objectsEffectsLink <-
-  #   goldfish:::getObjectsEffectsLink(rhsNames = parsedFormula$rhsNames)
-  # effectDescription <- goldfish:::GetDetailPrint(
-  #   objectsEffectsLink = objectsEffectsLink,
-  #   parsedformula = parsedFormula
-  # )
-  # namesEffects <- goldfish:::CreateNames(
-  #   effectDescription, sep = "_", joiner = "_"
-  # )
-    # process data
-  dataProcessed <- goldfish::gather_model_data(
-    formula = formulaDyNAM,
+  processed_data <- goldfish::gather_model_data(
+    formula = extended_formula$dynam_formula,
     model = if (model == "DyNAM" && sub_model == "choice") "DyNAMRE" else model,
     sub_model = sub_model,
     control_preprocessing = control_preprocessing,
@@ -173,153 +139,99 @@ make_data_re <- function(
     data = data
   )
 
-  nEvents <- length(dataProcessed$sender)
-
-  namesEffects <- setNames(
-    gsub("\\$", "Of", dataProcessed$namesEffects),
-    termsDyNAM
+  names_effects <- setNames(
+    gsub("\\$", "Of", processed_data$namesEffects),
+    extended_formula$dynam_terms
   )
 
-  expandedDF <- cbind(
-    setNames(
-      as.data.frame(dataProcessed$stat_all_events),
-      namesEffects
-    ),
-    data.frame(
-      event = rep(seq.int(nEvents), dataProcessed$n_candidates),
-      selected = sequence(dataProcessed$n_candidates) ==
-        rep(dataProcessed$selected, dataProcessed$n_candidates),
-      sender = rep(dataProcessed$sender, dataProcessed$n_candidates)
-    )
+  cstr_data <- make_df_cstr(
+    processed_data = processed_data,
+    extended_formula = extended_formula,
+    names_effects = names_effects
   )
-
-  # subset if constraint
-  if (!is.null(support_constraint)) {
-    cstrName <- namesEffects[attr(cstrTerms, "term.labels")]
-    keep <- expandedDF[, cstrName] == 1
-    expandedDF <- expandedDF[keep, !names(expandedDF) %in% cstrName]
-    effectDescription <-
-      dataProcessed$effectDescription[!namesEffects %in% cstrName, ]
-    namesEffects <- namesEffects[!namesEffects %in% cstrName]
-  } else effectDescription <- dataProcessed$effectDescription
+  expanded_df <- cstr_data$expanded_df
+  processed_data$effectDescription <- cstr_data$effect_description
 
   # create objects for Stan
-  nTotal <- nrow(expandedDF)
-
-  seqExDF <- seq.int(nTotal)
-
-  idxEvents <- tapply(seq.int(nTotal), expandedDF$event, range) |>
+  n_total <- nrow(expanded_df)
+  seq_ex_df <- seq.int(n_total)
+  idx_events <- tapply(seq.int(n_total), expanded_df$event, range) |>
     simplify2array()
-
-  sendersIx <- data.frame(label = sort(unique(expandedDF$sender))) |>
+  senders_ix <- data.frame(label = sort(unique(expanded_df$sender))) |>
     within(index <- seq.int(label))
+  expanded_df[, "sender_ix"] <-
+    senders_ix[match(expanded_df[, "sender"], senders_ix[, "label"]), "index"]
 
-  expandedDF[, "senderIx"] <-
-    sendersIx[match(expandedDF[, "sender"], sendersIx[, "label"]), "index"]
-
-  formulaDyNAMRE <- lapply(
-    reTerms,
-    \(x) paste(
-      if (length(attr(x, "term.labels")) > 0)
+  fe_idx <- match(extended_formula$base_labels, extended_formula$dynam_terms)
+  formula_dynam_re <- mapply(
+    function(effect, explanatory, names_effects, terms_dynam) {
+      if (length(explanatory) > 0) {
         paste(
-          namesEffects[match(deparse(x[[2]]), termsDyNAM)], "/",
-          namesEffects[match(attr(x, "term.labels"), termsDyNAM)]
-        ) else namesEffects[match(deparse(x[[2]]), termsDyNAM)],
-      collapse = " + "
+          names_effects[match(effect, terms_dynam)], "/",
+          names_effects[match(explanatory, terms_dynam)]
+        )
+      } else {
+        names_effects[match(effect, terms_dynam)]
+      }
+    },
+    extended_formula$random_labels$lhs,
+    extended_formula$random_labels$rhs,
+    MoreArgs = list(
+      names_effects = names_effects,
+      terms_dynam = extended_formula$dynam_terms
     )
   ) |>
-    c(namesEffects[match(attr(feTerms, "term.labels"), termsDyNAM)]) |>
+    c(names_effects[fe_idx]) |>
     paste(collapse = " + ")
 
-  Xmat <- model.matrix(
-    as.formula(paste("~ ", formulaDyNAMRE, " + 0")),
-    data = expandedDF
+  X_mat <- model.matrix(
+    as.formula(paste("~ ", formula_dynam_re, " + 0")),
+    data = expanded_df
   )
-  Zmat <- expandedDF[,
-                     namesEffects[match(reDyNAM, termsDyNAM)],
-                     drop = FALSE
-  ] |>
+
+  re_names <- names_effects[unlist(extended_formula$random_labels$lhs)]
+  Z_mat <- expanded_df[, re_names, drop = FALSE] |>
     as.matrix()
 
-  dataStan = list(
-    T = nEvents,
-    N = nTotal,
-    P = ncol(Xmat),
-    Q = length(random_effects),
-    A = nrow(sendersIx),
-    start = idxEvents[1, ],
-    end = idxEvents[2, ],
-    sender = expandedDF[, "senderIx"],
-    X = Xmat,
-    Z = Zmat,
-    chose = which(expandedDF[, "selected"]),
-    event = expandedDF[, "event"],
-    selected = expandedDF[, "selected"]
+  data_stan <- list(
+    T = ncol(idx_events),
+    N = n_total,
+    P = ncol(X_mat),
+    Q = ncol(Z_mat),
+    A = nrow(senders_ix),
+    start = idx_events[1, ],
+    end = idx_events[2, ],
+    sender = expanded_df[, "sender_ix"],
+    X = X_mat,
+    Z = Z_mat,
+    chose = which(expanded_df[, "selected"])
+    # event = expanded_df[, "event"],
+    # selected = expanded_df[, "selected"]
   )
 
-  suffix <- switch(sub_model,
-    choice = c("choice", "Choice"),
-    rate = c("rate", "Rate"),
-    choice_coordination = c("choice", "Choice")
-  )
+  names_stan <- names(data_stan)
+  names_change <- !grepl("^A|sender$", names_stan)
+  names_stan[names_change] <- glue("{names_stan[names_change]}_{sub_model}")
+  names(data_stan) <- names_stan
 
-  namesStan <- names(dataStan)
-  changeName <- grep("^[TNPQXZ]$", namesStan)
-  namesStan[changeName] <- paste0(namesStan[changeName], suffix[1])
-
-  changeName <- grep(
-    "(start)|(end)|(sender)|(chose)|(event)|(selected)",
-    namesStan
-  )
-  namesStan[changeName] <- paste0(namesStan[changeName], suffix[2])
-
-  names(dataStan) <- namesStan
-
-  return(structure(list(
-    dataStan = dataStan,
-    sendersIx = sendersIx,
-    namesEffects = namesEffects,
-    effectDescription = effectDescription
-  ),
-  class = c("DNRE", "goldfish.latent.data"),
-  model = "DyNAMRE",
-  subModel = "choice"
+  names_effects <- cstr_data$names_effects
+  extended_formula[["dynam_re_terms"]] <- formula_dynam_re
+   
+  return(structure(
+    list(
+      data_stan = data_stan,
+      senders_ix = senders_ix,
+      names_effects = names_effects,
+      effect_description = processed_data$effectDescription,
+      extended_formula = extended_formula
+    ),
+    class = c("DN_RE", "goldfish.latent.data"),
+    model = "DN_RE",
+    sub_model = sub_model,
+    sample = FALSE
   ))
 }
 
-ModifyFormulaRE <- function(reFormula, fixedEffects, envir = new.env()) {
-  stopifnot(inherits(reFormula, "formula"))
-
-  reForTerms <- terms(reFormula)
-  effectsFormula <- attr(reForTerms, "term.labels")
-  if (length(effectsFormula) == 0) {
-    return(reFormula)
-  }
-
-  depName <- goldfish:::get_dependent_name(fixedEffects)
-  defaultNetworkName <- attr(get(depName, envir = envir), "default_network")
-
-  # modify calls
-  effectForMod <- vapply(
-    effectsFormula,
-    \(x) {
-      effectLang <- str2lang(x)
-      if (length(effectLang) == 1) {
-        return(deparse(as.call(
-          list(effectLang, as.symbol(defaultNetworkName), type = "ego")
-        )))
-      } else if (deparse(effectLang[[1]]) != "ego") {
-        return(deparse(as.call(
-          c(list(effectLang[[1]]), as.list(effectLang[-1]), list(type = "ego"))
-        )))
-      } else return(x)
-    },
-    character(1)
-  )
-
-  # formula after modifications
-  return(reformulate(effectForMod, response = reFormula[[2]]))
-}
 
 #' Compute log-likelihood using MCMC samples
 #'
@@ -418,7 +330,7 @@ compute_log_likelihood <- function(
   type <- match.arg(type)
 
 
-  if (data_stan[["dataStan"]][["Qchoice"]] > 1)
+  if (data_stan[["data_stan"]][["Qchoice"]] > 1)
     stop("Likelihood computation for a model with more than one random-effect",
          " is not yet available.")
 
@@ -458,15 +370,15 @@ compute_log_likelihood <- function(
 
     split_size <- if (spec == 1) NULL else
       ifelse(
-        data_stan[["dataStan"]][["Nchoice"]] > 1e6,
-        4e4 / data_stan[["dataStan"]][["A"]],
-        data_stan[["dataStan"]][["Tchoice"]] / spec
+        data_stan[["data_stan"]][["Nchoice"]] > 1e6,
+        4e4 / data_stan[["data_stan"]][["A"]],
+        data_stan[["data_stan"]][["Tchoice"]] / spec
       ) |> floor()
 
     eventsPerCore <- if (!is.null(split_size)) {
       parallel::splitIndices(
-        data_stan[["dataStan"]][["Tchoice"]],
-        floor(data_stan[["dataStan"]][["Tchoice"]] / split_size)
+        data_stan[["data_stan"]][["Tchoice"]],
+        floor(data_stan[["data_stan"]][["Tchoice"]] / split_size)
       )  |>
         lapply(range)
     } else NULL
@@ -488,7 +400,7 @@ compute_log_likelihood <- function(
         seq_len(length(eventsPerCore)),
         fun = LogLikCondRE,
         draws = draws,
-        dataList = data_stan[["dataStan"]],
+        dataList = data_stan[["data_stan"]],
         eventsPerCore = eventsPerCore
       )
       logLik <- Reduce(f = cbind, x = logLik)
@@ -496,7 +408,7 @@ compute_log_likelihood <- function(
       logLik <- LogLikCondRE(
         eventsIter = NULL,
         draws = draws,
-        dataList = data_stan[["dataStan"]],
+        dataList = data_stan[["data_stan"]],
         eventsPerCore = NULL
       )
 
@@ -505,8 +417,8 @@ compute_log_likelihood <- function(
   } else if (type == "marginal") {
     logLik <- mllDyNAMChoice(
       draws = draws,
-      dataList = data_stan[["dataStan"]],
-      nNodes = n_nodes,
+      dataList = data_stan[["data_stan"]],
+      n_nodes = n_nodes,
       cl = cl
     )
 

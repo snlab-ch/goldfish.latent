@@ -6,36 +6,40 @@
 \usage{
 sample_data(
   data,
-  fraction_choice_set = 0.1,
-  method_choice_set = c("srswor", "systematic"),
+  fraction_set = 1,
+  method_set = c("srswor", "systematic"),
   fraction_events = 1,
   method_events = c("systematic", "srswor")
 )
 }
 \arguments{
-\item{data}{output from \code{\link[=make_data_hmm]{make_data_hmm()}} or \code{\link[=make_data_re]{make_data_re()}}}
+\item{data}{a \code{goldfish.latent.data} object.}
 
-\item{fraction_choice_set}{numerical value that indicates the proportion of
-alternatives to sample from the choice set or the compiting actors in the
-choice and rate model, respectively.}
+\item{fraction_set}{a numerical value greater than 0. If \code{fraction_set} is
+between 0 and 1, it is interpreted as the proportion of the choice set
+to sample. If \code{fraction_set} is greater than 1, it is interpreted as the
+number of alternatives to sample.}
 
-\item{method_choice_set}{character value indicating the function name used to
-generate the sample.}
+\item{method_set}{a character string indicating the sampling method for the
+choice set.}
 
-\item{fraction_events}{numerical value that indicates the proportion of
-events to sample. When the \code{data} object contains data for both sub-models,
-a pair sample is selected, i.e., the sample events contains information of
-the rate and choice sub-models.}
+\item{fraction_events}{a numerical value greater than 0. If
+\code{fraction_events} is between 0 and 1, it is interpreted as the proportion
+of events to sample. If \code{fraction_events} is greater than 1, it is
+interpreted as the number of events to sample.}
 
-\item{method_events}{character value indicating the function name used to
-generate the sample.}
+\item{method_events}{a character string indicating the sampling method for
+the events.}
 }
 \value{
-an object with the same meta information as \code{data} with the sampled
-events and alternative choices.
+a \code{goldfish.latent.data} object with the sampled data.
 }
 \description{
 For arguments \code{methodChoiceSet} and \code{methodEvents} the available methods are
+Sample preprocessed data
+}
+\details{
+For arguments \code{method_set} and \code{method_events} the available methods are
 \code{"systematic"} and \code{"srswor"}. They correspond to
 systematic sampling and simple random sampling without replacement,
 respectively. It is possible to use an external function that has arguments
@@ -43,5 +47,5 @@ respectively. It is possible to use an external function that has arguments
 to keep.
 }
 \examples{
-sampledData <- sample_data(data)
+# sampledData <- sample_data(data)
 }
