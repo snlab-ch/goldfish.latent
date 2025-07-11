@@ -1,3 +1,16 @@
+# Copyright (C) 2025, Alvaro Uzaheta - SNlab-ETH Zurich
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the MIT License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the MIT
+# License for more details.
+#
+# You should have received a copy of the MIT License along with this
+# program. If not, see <https://opensource.org/licenses/MIT>.
+
 #' @importFrom glue glue
 make_cox_model_data <- function(data, sub_model = c("rate", "choice")) {
   sub_model <- match.arg(sub_model)
@@ -75,6 +88,20 @@ make_df_cstr <- function(
     expanded_df
   })
 
+  n_selected <- sum(expanded_df$selected)
+  if (!is.null(processed_data$isDependent)) {
+    n_origin <- length(processed_data$selected[processed_data$isDependent])
+  } else {
+    n_origin <- length(processed_data$selected)
+  }
+  if (n_selected != n_origin) {
+    cli::cli_warn(c(
+      cli_text(
+        "There is a mismatch between the number of receivers ",
+        "before and after constraint."),
+      "i" = "receivers before: {n_origin}, receivers after: {n_selected}"
+    ))
+  }
   effect_description <- processed_data$effectDescription
   if (!is.null(extended_formula$cstr_label)) {
     cstr_name <- names_effects[extended_formula$cstr_label]

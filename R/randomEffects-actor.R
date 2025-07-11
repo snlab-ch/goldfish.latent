@@ -1,3 +1,16 @@
+# Copyright (C) 2025, Alvaro Uzaheta - SNlab-ETH Zurich
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the MIT License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the MIT
+# License for more details.
+#
+# You should have received a copy of the MIT License along with this
+# program. If not, see <https://opensource.org/licenses/MIT>.
+
 #' Create data for Stan
 #'
 #' The first step is create the data in the structure expected by the `Stan`
@@ -68,7 +81,7 @@
 #' @export
 #' @importFrom stats terms setNames as.formula model.matrix reformulate
 #' @importFrom goldfish gather_model_data
-#' @importFrom cli cli_abort
+#' @importFrom cli cli_abort cli_text
 #'
 #' @examples
 #' \donttest{
@@ -104,11 +117,26 @@ make_data_re <- function(
     is.null(progress) || inherits(progress, "logical"),
     is.null(control_preprocessing) ||
       inherits(control_preprocessing, "preprocessing_opt.goldfish"),
-    inherits(random_effects, "list"),
     inherits(fixed_effects, "formula"),
     is.null(support_constraint) ||
       inherits(support_constraint, "formula")
   )
+
+  modelInfo <- ifelse(model == "REM", "{model}", "{model}-{sub_model}")
+  if ((model == "REM" || (model == "DyNAM" && sub_model == "rate")) &&
+      !is.null(random_effects) && !inherits(random_effects, "list")) {
+    cli_abort(c(
+      cli_text("{.var random_effects} must be a list or NULL for ", modelInfo),
+      "x" = "you have supplied a {.cls {class(random_effects)}}"
+    ))
+  }
+  if (model == "DyNAM" && sub_model %in% c("choice", "choice_coordination") &&
+      !inherits(random_effects, "list")) {
+    cli_abort(c(
+      cli_text("{.var random_effects} must be a list or NULL for ", modelInfo),
+      "x" = "you have supplied a {.cls {class(random_effects)}}"
+    ))
+  }
 
   # setting initial values of some arguments
   if (is.null(progress)) progress <- FALSE
@@ -144,79 +172,161 @@ make_data_re <- function(
     extended_formula$dynam_terms
   )
 
-  cstr_data <- make_df_cstr(
-    processed_data = processed_data,
-    extended_formula = extended_formula,
-    names_effects = names_effects
-  )
-  expanded_df <- cstr_data$expanded_df
-  processed_data$effectDescription <- cstr_data$effect_description
-
-  # create objects for Stan
-  n_total <- nrow(expanded_df)
-  seq_ex_df <- seq.int(n_total)
-  idx_events <- tapply(seq.int(n_total), expanded_df$event, range) |>
-    simplify2array()
-  senders_ix <- data.frame(label = sort(unique(expanded_df$sender))) |>
-    within(index <- seq.int(label))
-  expanded_df[, "sender_ix"] <-
-    senders_ix[match(expanded_df[, "sender"], senders_ix[, "label"]), "index"]
-
-  fe_idx <- match(extended_formula$base_labels, extended_formula$dynam_terms)
-  formula_dynam_re <- mapply(
-    function(effect, explanatory, names_effects, terms_dynam) {
-      if (length(explanatory) > 0) {
-        paste(
-          names_effects[match(effect, terms_dynam)], "/",
-          names_effects[match(explanatory, terms_dynam)]
-        )
-      } else {
-        names_effects[match(effect, terms_dynam)]
-      }
-    },
-    extended_formula$random_labels$lhs,
-    extended_formula$random_labels$rhs,
-    MoreArgs = list(
-      names_effects = names_effects,
-      terms_dynam = extended_formula$dynam_terms
-    )
-  ) |>
-    c(names_effects[fe_idx]) |>
-    paste(collapse = " + ")
-
-  X_mat <- model.matrix(
-    as.formula(paste("~ ", formula_dynam_re, " + 0")),
-    data = expanded_df
-  )
-
   re_names <- names_effects[unlist(extended_formula$random_labels$lhs)]
-  Z_mat <- expanded_df[, re_names, drop = FALSE] |>
-    as.matrix()
 
+  has_cstr_relvl2 <- !is.null(extended_formula$cstr_label) ||
+    length(unlist(extended_formula$random_labels$rhs)) > 0
+
+  if (has_cstr_relvl2) {
+    cstr_data <- make_df_cstr(
+      processed_data = processed_data,
+      extended_formula = extended_formula,
+      names_effects = names_effects
+    )
+    expanded_df <- cstr_data$expanded_df
+    processed_data$effectDescription <- cstr_data$effect_description
+
+    # create objects for Stan
+    n_total <- nrow(expanded_df)
+    seq_ex_df <- seq.int(n_total)
+    idx_events <- tapply(seq.int(n_total), expanded_df$event, range) |>
+      simplify2array()
+    senders_ix <- data.frame(label = sort(unique(expanded_df$sender))) |>
+      within(index <- seq.int(label))
+    senders_ix_full <-
+      senders_ix[match(expanded_df[, "sender"], senders_ix[, "label"]), "index"]
+
+    fe_idx <- match(extended_formula$base_labels, extended_formula$dynam_terms)
+    formula_dynam_re <- mapply(
+      function(effect, explanatory, names_effects, terms_dynam) {
+        if (length(explanatory) > 0) {
+          paste(
+            names_effects[match(effect, terms_dynam)], "/",
+            names_effects[match(explanatory, terms_dynam)]
+          )
+        } else {
+          names_effects[match(effect, terms_dynam)]
+        }
+      },
+      extended_formula$random_labels$lhs,
+      extended_formula$random_labels$rhs,
+      MoreArgs = list(
+        names_effects = names_effects,
+        terms_dynam = extended_formula$dynam_terms
+      )
+    ) |>
+      c(names_effects[fe_idx]) |>
+      paste(collapse = " + ")
+
+    if (processed_data$has_intercept != extended_formula$has_intercept) {
+      cli_abort(c(
+        cli_text("The formula includes an intercept,",
+                 " but the preprocessing excludes it"),
+        "i" = cli_text("check if the ", modelInfo,
+                       " allows to include an intercept")
+      ))
+    }
+
+    X_mat <- model.matrix(
+      as.formula(paste("~ ", formula_dynam_re, " + 0")),
+      data = expanded_df
+    )
+
+    if (length(re_names) > 0) {
+      Z_mat <- expanded_df[, re_names, drop = FALSE] |>
+        as.matrix()
+      Q_model <- ncol(Z_mat)
+    } else {
+      Z_mat <- NULL
+      Q_model <- 0
+    }
+
+    chose_full <- which(expanded_df[, "selected"])
+
+    if (processed_data$has_intercept) {
+      offset_int <- with(processed_data, {
+        log(length(timespan) / (sum(timespan) * mean(n_candidates)))
+      })
+      data_stan_rate <- list(
+        timespan = processed_data$timespan,
+        is_dependent = processed_data$isDependent,
+        offset_int = offset_int
+      )
+    } else {
+      data_stan_rate <- NULL
+    }
+  } else {
+    senders_ix <- data.frame(label = sort(unique(processed_data$sender))) |>
+      within(index <- seq.int(label))
+    senders_ix_full <- rep(
+      match(processed_data$sender, senders_ix$label),
+      processed_data$n_candidates
+    )
+    idx_events <- with(processed_data, {
+      rbind(
+        cumsum(c(1, head(n_candidates, -1))),
+        cumsum(n_candidates)
+      )
+    })
+    chose_full <- with(processed_data, {
+      selected[, 1] + (cumsum(c(1, head(n_candidates, -1))) - 1) * isDependent
+    })
+    colnames(processed_data$stat_all_events) <- names_effects
+    X_mat <- processed_data$stat_all_events
+    n_total <- nrow(X_mat)
+    if (length(re_names) > 0) {
+      Z_mat <- processed_data$stat_all_events[, re_names, drop = FALSE]
+      Q_model <- ncol(Z_mat)
+    } else {
+      Z_mat <- NULL
+      Q_model <- 0
+    }
+    if (processed_data$has_intercept) {
+      offset_int <- with(processed_data, {
+        log(length(timespan) / (sum(timespan) * mean(n_candidates)))
+      })
+      data_stan_rate <- list(
+        timespan = processed_data$timespan,
+        is_dependent = processed_data$isDependent,
+        offset_int = offset_int
+      )
+    } else {
+      data_stan_rate <- NULL
+    }
+  }
   data_stan <- list(
     T = ncol(idx_events),
     N = n_total,
     P = ncol(X_mat),
-    Q = ncol(Z_mat),
+    Q = Q_model,
     A = nrow(senders_ix),
     start = idx_events[1, ],
     end = idx_events[2, ],
-    sender = expanded_df[, "sender_ix"],
+    sender = senders_ix_full,
     X = X_mat,
     Z = Z_mat,
-    chose = which(expanded_df[, "selected"])
+    chose = chose_full
     # event = expanded_df[, "event"],
     # selected = expanded_df[, "selected"]
   )
 
+  if (data_stan$T != length(chose_full)) {
+    cli::cli_warn(c(
+      cli_text("There is a mismatch between the number of events ",
+               "and the chose vector."),
+      "i" = "events: {data_stan$T}, chose vector: {length(chose_full)}"
+    ))
+  }
   names_stan <- names(data_stan)
   names_change <- !grepl("^A|sender$", names_stan)
   names_stan[names_change] <- glue("{names_stan[names_change]}_{sub_model}")
   names(data_stan) <- names_stan
 
+  data_stan <- c(data_stan, data_stan_rate)
+
   names_effects <- cstr_data$names_effects
   extended_formula[["dynam_re_terms"]] <- formula_dynam_re
-   
+
   return(structure(
     list(
       data_stan = data_stan,

@@ -2,43 +2,48 @@
 % Please edit documentation in R/utility.R
 \name{sample_data}
 \alias{sample_data}
-\title{sample preprocessed data}
+\title{Sample preprocessed data}
 \usage{
 sample_data(
   data,
   fraction_set = 1,
+  sample_size_set = NULL,
   method_set = c("srswor", "systematic"),
   fraction_events = 1,
+  sample_size_events = NULL,
   method_events = c("systematic", "srswor")
 )
 }
 \arguments{
 \item{data}{a \code{goldfish.latent.data} object.}
 
-\item{fraction_set}{a numerical value greater than 0. If \code{fraction_set} is
-between 0 and 1, it is interpreted as the proportion of the choice set
-to sample. If \code{fraction_set} is greater than 1, it is interpreted as the
-number of alternatives to sample.}
+\item{fraction_set}{a numerical value between 0 and 1.
+It is the proportion of cases to sample. If \code{sample_size_set} is not
+\code{NULL}, it is ignored.}
+
+\item{sample_size_set}{an integerish value greater than 0.
+It defines the number of cases to sample. Ignores \code{fraction_set} if
+\code{sample_size_set} is not \code{NULL}.}
 
 \item{method_set}{a character string indicating the sampling method for the
 choice set.}
 
-\item{fraction_events}{a numerical value greater than 0. If
-\code{fraction_events} is between 0 and 1, it is interpreted as the proportion
-of events to sample. If \code{fraction_events} is greater than 1, it is
-interpreted as the number of events to sample.}
+\item{fraction_events}{a numerical value between 0 and 1.
+It is the proportion of events to sample. If \code{sample_size_events} is not
+\code{NULL}, it is ignored.}
+
+\item{sample_size_events}{an integerish value greater than 0.
+It defines the number of events to sample. Ignores \code{fraction_events} if
+\code{sample_size_events} is not \code{NULL}.}
 
 \item{method_events}{a character string indicating the sampling method for
 the events.}
 }
 \value{
-a \code{goldfish.latent.data} object with the sampled data.
+a \code{goldfish.latent.data} object with the sampled data and the
+selection probabilities of the events/cases sampled.
 }
 \description{
-For arguments \code{methodChoiceSet} and \code{methodEvents} the available methods are
-Sample preprocessed data
-}
-\details{
 For arguments \code{method_set} and \code{method_events} the available methods are
 \code{"systematic"} and \code{"srswor"}. They correspond to
 systematic sampling and simple random sampling without replacement,
@@ -47,5 +52,5 @@ respectively. It is possible to use an external function that has arguments
 to keep.
 }
 \examples{
-# sampledData <- sample_data(data)
+sampledData <- sample_data(data)
 }

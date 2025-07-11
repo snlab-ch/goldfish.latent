@@ -4,7 +4,7 @@ test_that("warnings and stops", {
       random_effects = list(inertia ~ 1),
       fixed_effects = depNetwork ~ recip + trans,
       model = "dynam",
-      data = socialEvolutionData
+      data = testData
     )
   )
   expect_error(
@@ -13,7 +13,7 @@ test_that("warnings and stops", {
       fixed_effects = depNetwork ~ recip + trans,
       model = "REM",
       sub_model = "choose",
-      data = socialEvolutionData
+      data = testData
     )
   )
   expect_error(
@@ -22,28 +22,28 @@ test_that("warnings and stops", {
       fixed_effects = depNetwork ~ recip + trans,
       model = "REM",
       sub_model = "choice_coordination",
-      data = socialEvolutionData
+      data = testData
     )
   )
   expect_error(
     make_data_re(
       random_effects = list(inertia ~ 1, recip ~ 1),
       fixed_effects = depNetwork ~ trans,
-      data = socialEvolutionData
+      data = testData
     )
   )
   expect_error(
     make_data_re(
       random_effects = list(inertia ~ 1),
       fixed_effects = depNetwork ~ recip * trans,
-      data = socialEvolutionData
+      data = testData
     )
   )
   expect_error(
     make_data_re(
       random_effects = list(inertia ~ ego(actorsEx$attr1) * outdeg),
       fixed_effects = depNetwork ~ recip + trans,
-      data = socialEvolutionData
+      data = testData
     )
   )
   expect_error(
@@ -51,7 +51,7 @@ test_that("warnings and stops", {
       random_effects = list(inertia ~ 1),
       fixed_effects = depNetwork ~ recip + trans,
       support_constraint = ~ tie(networkExog) + recip(networkExog),
-      data = socialEvolutionData
+      data = testData
     )
   )
 })
@@ -59,7 +59,7 @@ test_that("choice empty model RE", {
   res <- make_data_re(
       random_effects = list(inertia ~ 1),
       fixed_effects = depNetwork ~ recip + trans,
-      data = socialEvolutionData
+      data = testData
   )
   expect_type(res, "list")
   expect_length(res, 4)
@@ -83,7 +83,7 @@ test_that("choice RE with expl effects", {
   res <- make_data_re(
     random_effects = list(inertia ~ outdeg),
     fixed_effects = depNetwork ~ recip + trans,
-    data = socialEvolutionData
+    data = testData
   )
   expect_type(res, "list")
   expect_length(res, 4)

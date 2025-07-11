@@ -1,6 +1,6 @@
 Package: goldfish.latent
 Title: Relational Event Models with Latent Variables
-Version: 0.0.1.9002
+Version: 0.0.1.9005
 Authors@R: 
     person(
       given = "Alvaro",
@@ -39,7 +39,7 @@ Imports:
     statmod,
     stringr
 Remotes: 
-    github::snlab-ch/goldfish@c34807ef2b0eb2d5c733d556a579c9b51b2e7258,
+    github::snlab-ch/goldfish@v1.7.0,
     stan-dev/cmdstanr,
     stan-dev/posterior,
     github::stan-dev/bayesplot

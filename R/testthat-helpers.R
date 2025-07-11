@@ -65,19 +65,23 @@ actorsEx <- goldfish::make_nodes(actorsEx) |>
 
 networkState <- goldfish::make_network(
   matrix = networkState, nodes = actorsEx,
-  directed = TRUE) |>
+  directed = TRUE
+) |>
   goldfish::link_events(change_events = eventsIncrement, nodes = actorsEx)
+
 depNetwork <- goldfish::make_dependent_events(
   events = eventsIncrement,
   nodes = actorsEx,
-  default_network = networkState)
+  default_network = networkState
+)
 
 # define goldfish objects
 networkExog <- goldfish::make_network(
   matrix = networkExog,
-  nodes = actorsEx, directed = TRUE) |>
+  nodes = actorsEx, directed = TRUE
+) |>
   goldfish::link_events(change_events = eventsExogenous, nodes = actorsEx)
 
-socialEvolutionData <- goldfish::make_data(
+testData <- goldfish::make_data(
   networkExog, depNetwork, actorsEx
 )
