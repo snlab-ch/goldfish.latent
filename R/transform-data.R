@@ -11,7 +11,15 @@
 # You should have received a copy of the MIT License along with this
 # program. If not, see <https://opensource.org/licenses/MIT>.
 
+#' Create a data frame and apply support constraint
+#'
+#' @param data a list with stan data.
+#' @param sub_model a character string indicating the sub_model,
+#'   either "rate" or "choice".
+#' @export
 #' @importFrom glue glue
+#' @return a data frame with the data in long format.
+
 make_cox_model_data <- function(data, sub_model = c("rate", "choice")) {
   sub_model <- match.arg(sub_model)
   data_stan <- data[["data_stan"]]
@@ -33,8 +41,8 @@ make_cox_model_data <- function(data, sub_model = c("rate", "choice")) {
   }
 
   if (sub_model == "rate") {
-    expanded_df$timespan <-
-      data_stan[[glue("timespan_{sub_model}")]][expanded_df$event]
+    expanded_df$log_timespan <-
+      log(data_stan[["timespan"]][expanded_df$event])
   }
 
   expanded_df

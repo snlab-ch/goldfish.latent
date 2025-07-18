@@ -81,7 +81,7 @@
 #' @export
 #' @importFrom stats terms setNames as.formula model.matrix reformulate
 #' @importFrom goldfish gather_model_data
-#' @importFrom cli cli_abort cli_text
+#' @importFrom cli cli_abort cli_warn
 #'
 #' @examples
 #' \donttest{
@@ -324,8 +324,13 @@ make_data_re <- function(
 
   data_stan <- c(data_stan, data_stan_rate)
 
-  names_effects <- cstr_data$names_effects
-  extended_formula[["dynam_re_terms"]] <- formula_dynam_re
+  if (has_cstr_relvl2) {
+    names_effects <- cstr_data$names_effects
+    extended_formula[["dynam_re_terms"]] <- formula_dynam_re
+  } else {
+    names_effects <- names_effects
+    extended_formula[["dynam_re_terms"]] <- formula
+  }
 
   return(structure(
     list(

@@ -30,10 +30,14 @@ data {
   int A; // number of actors/groups
 
   int Q_choice; // number of random effects
-  matrix[N_choice, Q_choice] Z_choice;
+  matrix[N_choice, Q_choice] Z_temp;
   // vector[N_choice] Z_choice;
 
   array[N_choice] int<lower = 1, upper = A> sender;
+}
+transformed data {
+  vector[N_choice] Z_choice;
+  Z_choice = to_vector(Z_temp);
 }
 parameters {
   vector[P_choice] beta_choice; // fixed effects, includes average random effect
@@ -41,10 +45,9 @@ parameters {
   real<lower=0> sigma; // variance random-effect
   vector[A] gamma_raw; // actor uncentered random-effect
 }
-// transformed parameters {
-  // // sigma in original bugs
-  // real<lower=0> sigmasq = square(sigma); // standard deviation of random effect
-// }
+transformed parameters {
+  vector[A] gamma = sigma * gamma_raw; // Centered random effects
+}
 model {
   // normal prior beta 
   target += std_normal_lpdf(beta_choice);
@@ -58,14 +61,8 @@ model {
   // ll
   
   // create a temporary holding vector
-  vector[N_choice] xb_choice; 
-  {
-    vector[A] gamma;
-    gamma = sigma * gamma_raw;
-
-    xb_choice = X_choice * beta_choice +
-      to_vector(Z_choice) .* gamma[sender]; 
-  }
+  vector[N_choice] xb_choice =
+    X_choice * beta_choice + Z_choice .* gamma[sender]; 
 
   for (t in 1:T_choice)
     target  += xb_choice[chose_choice[t]] -

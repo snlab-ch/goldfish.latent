@@ -57,41 +57,41 @@
 # }
 make_model_code <- function(data_stan, ...) {
   stopifnot(inherits(data_stan, "goldfish.latent.data"))
-  
+
   model <- attr(data_stan, "model")
-  subModel <- attr(data_stan, "subModel")
-  
-  if (model == "DN_RE" && subModel == "choice") {
-    if (data_stan[["data_stan"]][["Qchoice"]] == 1) {
-      fileModel <- "DNRE1_choice.stan"
+  sub_model <- attr(data_stan, "sub_model")
+  Q_choice <- data_stan[["data_stan"]][["Q_choice"]]
+  has_intercept <- data_stan[["data_stan"]][["hasIntercept"]]
+  if (model == "DN_RE" && sub_model == "choice") {
+    if (Q_choice == 1) {
+      file_model <- "DNRE1_choice.stan"
     } else {
       stop("Not yet implemented for more than one random effect")
     }
   } else if (model == "DNHMM") {
-    if (subModel == "both" && data_stan[["data_stan"]][["hasIntercept"]]) {
+    if (sub_model == "both" && has_intercept) {
       # stop("Not yet implemented, use independent submodels")
       # fileModel <- "DyNAMSR_both.stan"
-      fileModel <- "DNHMM_both.stan"
-    } else if (subModel == "both") {
+      file_model <- "DNHMM_both.stan"
+    } else if (sub_model == "both") {
       stop("Not yet implemented, use independent submodels")
-      fileModel <- "DNHMM_both_ord.stan"
-    } else if (subModel == "rate" &&
-               data_stan[["dataStan"]][["hasIntercept"]]) {
-      fileModel <- "DNHMM_rate.stan"
-    } else if (subModel == "choice") {
-      fileModel <- "DNHMM_choice.stan"
+      file_model <- "DNHMM_both_ord.stan"
+    } else if (sub_model == "rate" && has_intercept) {
+      file_model <- "DNHMM_rate.stan"
+    } else if (sub_model == "choice") {
+      file_model <- "DNHMM_choice.stan"
     } else {
       stop("not implemented yet")
     }
   }
-  
-  stanCode <- readLines(
-    system.file("stan", fileModel, package = "goldfish.latent")
+
+  stan_code <- readLines(
+    system.file("stan", file_model, package = "goldfish.latent")
   )
-  
+
   if (requireNamespace("cmdstanr", quietly = TRUE) &&
       cmdstanr::cmdstan_version() >= "2.29.2") {
-    model <- cmdstanr::write_stan_file(code = stanCode)
+    model <- cmdstanr::write_stan_file(code = stan_code)
   } else {
     stop(
       dQuote("cmdstanr"), " package and a working version of",
@@ -99,8 +99,8 @@ make_model_code <- function(data_stan, ...) {
       "\nPlease follow Stan documentation for instructions on how to install."
     )
   }
-  
-  return(model)
+
+  model
 }
 
 
@@ -397,8 +397,8 @@ sample_data <- function(
     if (sub_model %in% c("both", "choice")) {
       n_actors <- length(unique(data_choice[["sender"]]))
       if (n_actors != data_choice[["A"]]) {
-        cli_abort(c(
-          "Number of actors in choice data does not match number of actors in rate data.",
+        cli::cli_abort(c(
+          "Number of actors for RE in rate and choice data does not match.",
           "x" = "Number of actors in choice data is {n_actors}.",
           "y" = "Number of actors in rate data is {data_choice$A}."
         ))
@@ -406,10 +406,10 @@ sample_data <- function(
     } else if (sub_model %in% c("rate")) {
       n_actors <- length(unique(data_rate["sender"]))
       if (n_actors != data_rate[["A"]]) {
-        cli_abort(c(
-          "Number of actors in rate data does not match number of actors in choice data.",
-          "x" = "Number of actors in rate data is {n_actors}.",
-          "y" = "Number of actors in choice data is {data_rate$A}."
+        cli::cli_abort(c(
+          "Number of sender actors does not match number of RE actors.",
+          "x" = "Number of sender actors in rate data is {n_actors}.",
+          "y" = "Number of RE actors in rate data is {data_rate$A}."
         ))
       }
     }
