@@ -55,16 +55,29 @@
 # make_model_code <- function(data_stan, ...) {
 #   UseMethod("make_model_code", data_stan)
 # }
-make_model_code <- function(data_stan, ...) {
-  stopifnot(inherits(data_stan, "goldfish.latent.data"))
+make_model_code <- function(data_stan, map_reduce = FALSE) {
+  if (!inherits(data_stan, "goldfish.latent.data")) {
+    cli::cli_abort(c(
+      "{.arg data_stan} must be of class `goldfish.latent.data`.",
+      "x" = "You've supplied a {.cls {class(data_stan)}}."
+    ))
+  }
 
   model <- attr(data_stan, "model")
   sub_model <- attr(data_stan, "sub_model")
-  Q_choice <- data_stan[["data_stan"]][["Q_choice"]]
-  has_intercept <- data_stan[["data_stan"]][["hasIntercept"]]
+  q_size <- data_stan[["data_stan"]][[glue("Q_{sub_model}")]]
+  has_intercept <- data_stan[["data_stan"]][["has_intercept"]]
   if (model == "DN_RE" && sub_model == "choice") {
-    if (Q_choice == 1) {
+    if (q_size == 1) {
       file_model <- "DNRE1_choice.stan"
+      if (map_reduce) file_model <- "DNRE1_choice_map_reduce.stan"
+    } else {
+      stop("Not yet implemented for more than one random effect")
+    }
+  } else if (model == "DN_RE" && sub_model == "rate" && has_intercept) {
+    if (q_size == 0) {
+      file_model <- "DNRE_Q0_rate.stan"
+      if (map_reduce) file_model <- "DNRE_Q0_rate_map_reduce.stan"
     } else {
       stop("Not yet implemented for more than one random effect")
     }
@@ -83,6 +96,8 @@ make_model_code <- function(data_stan, ...) {
     } else {
       stop("not implemented yet")
     }
+  } else {
+    stop("not implemented yet")
   }
 
   stan_code <- readLines(

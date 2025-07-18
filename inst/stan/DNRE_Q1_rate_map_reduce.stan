@@ -17,15 +17,17 @@
 
 functions {
   real partial_sum_lpmf(
-    array[] int start_choice,
+    array[] int start_rate,
     int start,
     int end,
-    array[] int end_choice,
-    matrix X_choice,
+    array[] int end_rate,
+    array[] int chose_rate,
+    vector timespan,
+    array[] int is_dependent,
+    matrix X_rate,
     vector Z_temp,
-    array[] int chose_choice,
     array[] int sender,
-    vector beta_choice,
+    vector beta_rate,
     vector gamma
  ) {
     real log_lik = 0.0;
@@ -37,17 +39,19 @@ functions {
 
     for (t in 1:(end - start + 1)) {
       t_index = t + start - 1;
-      start_event = start_choice[t];
-      end_event = end_choice[t_index];
-      chose_event = chose_choice[t_index] - start_event + 1;
+      start_event = start_rate[t];
+      end_event = end_rate[t_index];
+      chose_event = chose_rate[t_index] - start_event + 1;
       size_slice = end_event - start_event + 1;
       array[size_slice] int event_slice =
         linspaced_int_array(size_slice, start_event, end_event);
       
-      vector[size_slice] xb_choice = X_choice[event_slice] * beta_choice +
+      vector[size_slice] xb_rate = X_rate[event_slice] * beta_rate +
         Z_temp[event_slice] .* gamma[sender[event_slice]];
       
-      log_lik += xb_choice[chose_event] - log_sum_exp(xb_choice);
+      if (timespan[t_index] > 0)
+        log_lik += (is_dependent[t_index] ? xb_rate[chose_event] : 0) -
+          timespan[t_index] * exp(log_sum_exp(xb_rate));
     }
 
     return log_lik;
@@ -55,23 +59,26 @@ functions {
 }
 
 data {
-  int<lower=1> N_choice;       // Total number of choices in all events
-  int<lower=1> T_choice;       // Number of events
-  int<lower=0> P_choice;       // Number of fixed-effect covariates
+  int<lower=1> N_rate;       // Total number of choices in all events
+  int<lower=1> T_rate;       // Number of events
+  int<lower=0> P_rate;       // Number of fixed-effect covariates
 
-  matrix[N_choice, P_choice] X_choice;
+  matrix[N_rate, P_rate] X_rate;
 
   // the starting, ending and chosen index observation for each event
-  array[T_choice] int<lower=1, upper=N_choice> start_choice;
-  array[T_choice] int<lower=1, upper=N_choice> end_choice;
-  array[T_choice] int<lower=1, upper=N_choice> chose_choice;
+  array[T_rate] int<lower=1, upper=N_rate> start_rate;
+  array[T_rate] int<lower=1, upper=N_rate> end_rate;
+  array[T_rate] int<lower=1, upper=N_rate> chose_rate;
 
   // random effects vars
   int<lower=1> A;              // Number of actors/groups
-  int<lower=1> Q_choice;       // Number of random effects (must be 1)
-  matrix[N_choice, Q_choice] Z_choice;
-  array[N_choice] int<lower=1, upper=A> sender;
+  int<lower=1> Q_rate;       // Number of random effects (must be 1)
+  matrix[N_rate, Q_rate] Z_rate;
+  array[N_rate] int<lower=1, upper=A> sender;
   // array[A] int<lower=1, upper=T_choice> start_group;
+
+  vector<lower=0>[T_rate] timespan;
+  array[T_rate] int<lower=0, upper=1> is_dependent;
 
   int<lower=1> grain_size;     // Grain size for map_reduce
 }
@@ -83,11 +90,12 @@ transformed data {
   // }
   // end_group[A] = T_choice;
 
-  vector[N_choice] Z_temp = to_vector(Z_choice);
+  vector[N_rate] Z_temp = to_vector(Z_rate);
+  real log_crude_rate = log(T_rate / (N_rate * mean(timespan)));
 }
 
 parameters {
-  vector[P_choice] beta_choice; // Fixed effects
+  vector[P_rate] beta_rate; // Fixed effects
   real<lower=0> sigma;          // Variance of the random effect
   vector[A] gamma_raw;          // Uncentered random effects
 }
@@ -98,19 +106,22 @@ transformed parameters {
 
 model {
   // Priors
-  target += std_normal_lpdf(beta_choice);
+  target += normal_lpdf(beta_rate[1] | log_crude_rate, 4);
+  target += std_normal_lpdf(beta_rate[2:]);
   target += exponential_lpdf(sigma | 1);
   target += std_normal_lpdf(gamma_raw);
 
   // Likelihood
   target += reduce_sum(partial_sum_lpmf,
-                       start_choice,
+                       start_rate,
                        grain_size,
-                       end_choice,
-                       X_choice,
+                       end_rate,
+                       chose_rate,
+                       timespan,
+                       is_dependent,
+                       X_rate,
                        Z_temp,
-                       chose_choice,
                        sender,
-                       beta_choice,
+                       beta_rate,
                        gamma);
 }

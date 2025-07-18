@@ -288,10 +288,13 @@ make_data_re <- function(
       data_stan_rate <- list(
         timespan = processed_data$timespan,
         is_dependent = processed_data$isDependent,
-        offset_int = offset_int
+        offset_int = offset_int,
+        has_intercept = processed_data$has_intercept
       )
     } else {
-      data_stan_rate <- NULL
+      data_stan_rate <- list(
+        has_intercept = processed_data$has_intercept
+      )
     }
   }
   data_stan <- list(
