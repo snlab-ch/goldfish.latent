@@ -519,7 +519,7 @@ write_json <- function(x, file_name, n_chunks = 10) {
 
   keep_dttxt <- c(
     glue("{data}_{sub_model}", data = c("N", "T", "P", "Q")),
-    c("A")
+    c("A", if (has_interaction) "C" else NULL)
   )
   data_text <- transform_json(
     data_stan[keep_dttxt],
