@@ -4,7 +4,7 @@
 \alias{write_json}
 \title{Write model data to a JSON file}
 \usage{
-write_json(x, file_name, n_chunks = 10)
+write_json(x, file_name, n_chunks = 10, grain_size = 5)
 }
 \arguments{
 \item{x}{Data object}
@@ -14,6 +14,9 @@ needs the .json extension.}
 
 \item{n_chunks}{Number of chunks to divide the JSON string to avoid
 the error.}
+
+\item{grain_size}{Number of events to process in each thread when
+using within chain parallelization with Map-Reduce.}
 }
 \description{
 When the data is too large, the JSON string can be too long and cause

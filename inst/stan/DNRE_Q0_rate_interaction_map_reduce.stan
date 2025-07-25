@@ -25,6 +25,7 @@ functions {
     array[] int chose_rate,
     vector timespan,
     array[] int is_dependent,
+    real log_crude_rate,
     matrix X_rate,
     array[] int sender,
     array[] int interaction,
@@ -51,7 +52,7 @@ functions {
       
       vector[size_slice] xb_rate =
         X_rate[event_slice] * beta_rate[interaction_event] +
-        gamma[sender[event_slice]];
+        gamma[sender[event_slice]] + log_crude_rate;
       
       if (timespan[t_index] > 0)
         log_lik += (is_dependent[t_index] ? xb_rate[chose_event] : 0) -
@@ -127,6 +128,7 @@ model {
                        chose_rate,
                        timespan,
                        is_dependent,
+                       log_crude_rate,
                        X_rate,
                        sender,
                        interaction,

@@ -258,9 +258,11 @@ sample_set <- function(
 #'   needs the .json extension.
 #' @param n_chunks Number of chunks to divide the JSON string to avoid
 #'   the error.
+#' @param grain_size Number of events to process in each thread when 
+#'   using within chain parallelization with Map-Reduce.
 #' @return NULL
 #' @export
-write_json <- function(x, file_name, n_chunks = 10) {
+write_json <- function(x, file_name, n_chunks = 10, grain_size = 5) {
   model <- attr(x, "model")
   sub_model <- attr(x, "sub_model")
   has_sample <- attr(x, "sample")
@@ -328,6 +330,7 @@ write_json <- function(x, file_name, n_chunks = 10) {
   total_size <- aprox_size * 3 + approx_size_x + approx_size_z +
     approx_size_rate + approx_size_interaction + 200
   if (total_size < (2^31 - 1)) {
+    data_stan[["grain_size"]] <- grain_size
     cmdstanr::write_stan_json(
       data = data_stan,
       file = file_name
@@ -522,7 +525,7 @@ write_json <- function(x, file_name, n_chunks = 10) {
     c("A", if (has_interaction) "C" else NULL)
   )
   data_text <- transform_json(
-    data_stan[keep_dttxt],
+    c(data_stan[keep_dttxt], list(grain_size = grain_size)),
     first_position = 3,
     first_replace = "",
     last_replace = "}"
