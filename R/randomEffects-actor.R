@@ -149,6 +149,15 @@ make_data_re <- function(
 
   # formula treatment
   set_re_as_ego <- model == "DyNAM" && sub_model != "rate"
+  has_intercept <- has_explicit_intercept(fixed_effects)
+  if (sub_model == "choice" && has_intercept) {
+    cli::cli_warn(c(
+      "The {.var fixed_effects} argument doesn't support intercept for the ",
+      "choice sub-model.",
+      "i" = "Intercept will be removed from the formula."
+    )) 
+    fixed_effects <- stats::update.formula(fixed_effects, ~ .)
+  }
   extended_formula <- modify_formula(
     formula = fixed_effects,
     support_constraint = support_constraint,

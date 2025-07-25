@@ -4,7 +4,7 @@
 \alias{make_model_code}
 \title{Create a Stan code file}
 \usage{
-make_model_code(data_stan, ...)
+make_model_code(data_stan, map_reduce = FALSE)
 }
 \arguments{
 \item{data_stan}{a \code{list} output of a \code{\link[=CreateData]{CreateData()}} call.}

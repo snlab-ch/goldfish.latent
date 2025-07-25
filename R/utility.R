@@ -537,3 +537,102 @@ change_k_regimes <- function(chr_vec, k_regimes) {
     gsub("%%kR%%", as.character(k_regimes), chr_vec[which_line])
   chr_vec
 }
+
+#' Transform a object to a valid JSON text
+#' 
+#' @param object the object to transform.
+#' @param first_position the position in the string until where the text
+#'   is replaced.
+#' @param first_replace the string to replace the text until the
+#'   `first_position`.
+#' @param last_position the position from where the text is replaced
+#'   until the end of the string.
+#' @param last_replace the string to replace the text from the
+#'   `last_position` until the end of the string.
+#' @return a valid JSON text.
+#' @noRd
+transform_json <- function(
+  object,
+  first_position = 1,
+  first_replace = "",
+  last_position = -1,
+  last_replace = ","
+) {
+  json_text <- jsonlite::toJSON(
+    object,
+    pretty = TRUE, digits = NA, auto_unbox = TRUE, always_decimal = FALSE,
+    factor = "integer"
+  )
+  stringr::str_sub(json_text, 1, first_position) <- first_replace
+  stringr::str_sub(json_text, last_position) <- last_replace
+  json_text
+}
+
+create_json_chunk_matrix <- function(
+  indices,
+  matrix,
+  first_position = 3,
+  first_replace = "",
+  last_position = -2,
+  last_replace = ","
+) {
+  transform_json(
+    matrix[indices, , drop = FALSE],
+    first_position = first_position,
+    first_replace = first_replace,
+    last_position = last_position,
+    last_replace = last_replace
+  )
+}
+
+create_json_chunk_vector <- function(
+  indices,
+  vector,
+  first_position = 1,
+  first_replace = "",
+  last_position = -1,
+  last_replace = ","
+) {
+  transform_json(
+    vector[indices],
+    first_position = first_position,
+    first_replace = first_replace,
+    last_position = last_position,
+    last_replace = last_replace
+  )
+}
+
+approx_nchar_vector <- function(n, last_val, indent = 0L, is_integer = TRUE) {
+  # rough upper bound of digit length
+  avg_digits <- max(ceiling(log10(last_val)), 1)
+  # Per element: indentation + number + comma + newline
+  extra <- if (is_integer) 0 else 6
+  per_element_chars <- indent + avg_digits + extra + 2  # "  123,\n"
+
+  # Remove the comma for the last element
+  # 2 for opening and closing brackets
+  n * per_element_chars
+}
+
+approx_nchar_matrix <- function(
+  n, p, max_val, is_integer = TRUE, indent = 0L
+) {
+  # Estimate number of characters needed to represent each number
+  digit_width <- nchar(abs(max_val))
+
+  # For doubles: add ".0" or assume ~6 extra chars for decimal places
+  extra <- if (is_integer) 0 else 6
+
+  number_width <- digit_width + extra
+
+  # Each number gets: indent + number + comma + space
+  per_number <- indent + number_width + 2
+
+  # Each row is wrapped in [ ], and followed by a comma/newline (except last)
+  row_overhead <- indent + 4  # [\n, indent, ], \n
+
+  # Outer array brackets [\n ... \n] plus closing newline
+  outer_overhead <- 4
+
+  n * p * per_number + n * row_overhead + outer_overhead
+}
